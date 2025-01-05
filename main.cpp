@@ -44,11 +44,11 @@ void logo(int l)
     char k =178;
   if (lev== "EASY"){
     r=3;
-    c=50;
+    c=60;
   }
   else if (lev== "MEDIUM"){
     r=3;
-    c=60;
+    c=80;
   }
    else if (lev== "HARD"){
     r=3;
@@ -300,6 +300,9 @@ struct Node {
 
 void print_board_(int dimensions_x, int dimensions_y) {
     logo(1);
+    if(lev=="EASY"||lev=="MEDIUM")
+          dimensions_x=2*dimensions_y*2;
+            else
     dimensions_x=2*dimensions_y;
     char b=178;
     int row = 11, col = 50;
@@ -313,12 +316,12 @@ void print_board_(int dimensions_x, int dimensions_y) {
         cout << b;
         row++;
     }
-    
+
     for (int i = 0; i <= dimensions_x ; i++) {
         cout << b;
         col++;
     }
-    
+
     for (int i = 0; i <= dimensions_y + 1; i++) {
         row--;
         gotoRowCol(row, col);
@@ -326,32 +329,32 @@ void print_board_(int dimensions_x, int dimensions_y) {
     }
     row = 10, col = 49;
     gotoRowCol(row, col);
-    
+
     for (int i = 0; i <= dimensions_x + 4; i++) {
         cout << b;
     }
-    
+
      for (int i = 0; i <= dimensions_y + 2; i++) {
             gotoRowCol(++row, col);
         cout << b;
     }
-    
+
      for (int i = 0; i <= dimensions_x + 2; i++) {
             gotoRowCol(row, ++col);
         cout << b;
     }
-    
+
      for (int i = 0; i <= dimensions_y + 2; i++) {
             gotoRowCol(--row, col);
         cout << b;
     }
-    
+
     col++;
      for (int i = 0; i <= dimensions_y + 2; i++) {
             gotoRowCol(++row, col);
         cout << b;
     }
-    
+
      row = 9, col = 48;
        for (int i = 0; i <= dimensions_y + 3; i++) {
             gotoRowCol(++row, col);
@@ -370,7 +373,10 @@ void displayMaze(Node* start,int x) {
             gotoRowCol(r, c);
             cout << col->type << "";
             col = col->right;
-            c++;
+            if(lev=="EASY"||lev=="MEDIUM")
+            c+=2;
+            else
+                c++;
         }
         r++;
         c = 51;
@@ -544,7 +550,7 @@ void level_9() {
     moves=150;
     int x=30;
     Node* nodes[30][60];
- 
+
     char maze[30][60] = {
     {'P', '.', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.','\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X'},
     {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.','X', '.', '.', '\xB1', '.', '\xB1', '.', '.', '$', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', 'X', '.','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '.', '$', '.', '.', '$', '$'},
@@ -657,7 +663,7 @@ void level_8() {
     moves=200;
     int x=30;
     Node* nodes[30][60];
-    
+
     char maze[30][60] = {
     {'P', '.', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.','\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X'},
     {'X', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1'},
@@ -975,7 +981,7 @@ void level_5() {
     moves=80;
     int x=20;
     Node* nodes[20][40];
-    
+
     char maze[20][40] = {
     {'P', '.', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', 'E'},
     {'.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.'},
@@ -1077,7 +1083,7 @@ void level_4() {
     moves=50;
     int x=20;
     Node* nodes[20][40];
-    
+
     char maze[20][40] = {
     {'P', '.', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.'},
     {'.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.'},
@@ -1181,7 +1187,7 @@ void level_3() {
     moves=50;
     int x=10;
     Node* nodes[10][20];
-    
+
     char maze[10][20] = {
     {'P', '.', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.'},
     {'.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.', '\xB1', '.','\xB1','\xB1', '.', '.'},
@@ -1272,7 +1278,7 @@ void level_2() {
     health=3;
     int x=10;
     Node* nodes[10][20];
-    
+
     char maze[10][20] = {
         {'P', '.', '$', '$', '.', '.', '.', '\xB1', '.', '\xB1', '.', '$', '$', '.', '.', '.', '\xB1', '.', '\xB1','.'},
         {'\xB1', '\xB1', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '$','.', '\xB1', '\xB1', '.', '.', '$', '.', '.', '.', '.'},
@@ -1392,7 +1398,7 @@ void level_2() {
             if (j < 19) nodes[i][j]->right = nodes[i][j + 1];
         }
     }
-      
+
     Node* player = nodes[0][0];
     cout << "Navigate the maze to find the exit (E).\n";
 
@@ -1562,7 +1568,7 @@ void start()
         gotoRowCol(20,25);
         cout<<"Enter your Choice ::" ;
         cin>>choice3;
-        
+
     if(choice3==7)
     {
         goto menu;
@@ -1586,7 +1592,7 @@ void start()
         gotoRowCol(20,25);
         cout<<"Enter your Choice ::" ;
         cin>>choice3;
-        
+
     if(choice3==6)
     {
         goto menu3;
@@ -1637,7 +1643,7 @@ void start()
         instructions();
         cout<<"PRESS ANY KEY TO CONTINUE......";
         getch();
-        goto menu
+        goto menu;
     }
    else if (choice==6)
     {
@@ -1657,7 +1663,13 @@ void start()
 }
 
 int main() {
+
     start();
-    char C='\xB0';
-    cout<<C;
+
 }
+
+
+
+
+
+
