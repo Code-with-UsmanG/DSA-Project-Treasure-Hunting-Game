@@ -1,6 +1,6 @@
 # DSA Project - Treasure Hunting Game
 
-A console-based application developed as part of my Data Structures and Algorithms (DSA) course project.
+A Graphical User Interface (GUI) based application developed as part of my Data Structures and Algorithms (DSA) course project.
 
 ---
 
@@ -8,16 +8,17 @@ A console-based application developed as part of my Data Structures and Algorith
 
 The **Treasure Hunting Game** is an engaging console-based application written in **C++**, designed to demonstrate a practical application of various data structures and algorithms. The project provides users with an interactive environment to explore, hunt for treasures, and navigate through challenges using a user-friendly interface.
 
-Future plans for the project include transitioning to a **GUI-based interface**, offering enhanced visual appeal and interactivity.
+The project include a **GUI-based interface**, offering enhanced visual appeal and interactivity.
 
 ---
 
 ## Features
 
 - Start the game with a customized environment.
+- Collect Bonus points by Collectibles.
 - Navigate through the map using intuitive commands.
 - Find and collect hidden treasures while avoiding obstacles.
-- Save and load progress for a seamless gaming experience.
+- Teleportation Functionality from level to level.
 - Interactive gameplay with efficient data handling through various algorithms.
 
 ---
@@ -26,7 +27,7 @@ Future plans for the project include transitioning to a **GUI-based interface**,
 
 - **Programming Language:** C++
 - **Algorithms and Data Structures:** Implemented for efficient gameplay logic.
-- **Platform:** Console-based application (planned future GUI versions).
+- **Platform:** Graphical User Interface (GUI-based application).
 
 ---
 
