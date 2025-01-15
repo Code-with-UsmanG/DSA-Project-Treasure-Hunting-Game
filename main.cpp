@@ -1,1675 +1,679 @@
-#include <iostream>
+#include "framework.h"
 #include <windows.h>
-#include <conio.h>
-#include <math.h>
+#include <vector>
+#include <iostream>
+#include <mmsystem.h>
+#include <sstream> // For stringstream conversion
+#include <thread>
+#include <stack>
+#include <queue>
 #include <string>
-#include<fstream>
 
-using namespace std;
-//Forward Declaration of functions
-void gotoRowCol(int x ,int y );
-void sleep(int a);
-void logo(int k);
-void score();
-void recordScore(string playerName, int score);
-void displayLeaderboard();
-//Global Variables
-int coins;
-int moves;
-bool ex=0;
-bool win1=0;
-int health;
-string lev;
+#define CELL_SIZE 50 // Size of each cell in the maze
+#define GRID_ROWS 10 // Number of rows in the maze
+#define GRID_COLS 10 // Number of columns in the maze
+#define TIMER_ID 1 // Timer identifier
+#define TIMER_INTERVAL 1000 // Timer interval in milliseconds (1 second)
 
-//Functions
-void gotoRowCol(int rpos, int cpos) {
-    int xpos = cpos, ypos = rpos;
-    COORD scrn;
-    HANDLE hOutput = GetStdHandle(STD_OUTPUT_HANDLE);
-    scrn.X = cpos;
-    scrn.Y = rpos;
-    SetConsoleCursorPosition(hOutput, scrn);
-}
-void sleep(int m) {
-    for (int j = 0; j < m * 21000; j++) {}
-}
+// Global Variables
+HINSTANCE hInst;
+HWND hWndMain;
+POINT playerPosition = { 0, 0 }; // Player's starting position
+int currentLevel = 0; // The current level the player is on
+int lives = 2; // Player lives
+int timeLeft = 20; // Time remaining to complete the level
+bool timeOutDisplayed = false;  // Flag to track if time's up message was shown
+int score = 0; // Initial score
+bool isPlayingBackgroundMusic = true; // Flag to control background music
 
-void exit_()
-{    ex=1;
-}
+// Define a stack to track player moves
+std::stack<POINT> playerMoveHistory;
+// Define a queue to manage game events
+std::queue<std::wstring> eventQueue;
 
-void logo(int l)
-{
-    int r,c;
-    char k =178;
-  if (lev== "EASY"){
-    r=3;
-    c=60;
-  }
-  else if (lev== "MEDIUM"){
-    r=3;
-    c=80;
-  }
-   else if (lev== "HARD"){
-    r=3;
-    c=70;
-  }
-  else   {
-    r=3;
-    c=50;
-  }
-    gotoRowCol(r++,c);
-    cout<<k<<k<<k<<k<<"  "<<k<<k<<k<<"  "<<k<<"   "<<k<<"  "<<k<<k<<k<< "  ";
-    gotoRowCol(r++,c);
-    cout<<k<<"     "<<k<<" "<<k<<"  "<<k<<"  "<<" "<<k<<"  "<<k<< "  ";
-    gotoRowCol(r++,c);
-    cout<<k<<" "<<k<<k<<"  "<<k<<k<<k<<"  "<<k<<k<<" "<<k<<k<<"  "<<k<<k<<k<< "  ";
-    gotoRowCol(r++,c);
-    cout<<k<<"  "<<k<<"  "<<k<<" "<<k<<"  "<<k<<" "<<k<<" "   <<k<<"  "<<k<<"       ";
-    gotoRowCol(r++,c);
-    cout<<k<<k<<k<<k<<"  "<<k<<" "<<k<<"  "<<k<<"   "<<k<<"  "<<k<<k<<k<< "  ";
-}
-int L=0;
-void score()
-{
-    gotoRowCol(1,10);
-        cout<<"Coins : "<<coins<<" $";
-    gotoRowCol(5,10);
-        cout<<"Level : "<<L<<".";
-    gotoRowCol(7,10);
-        cout<<lev<<".";
-    gotoRowCol(3,10);
-        cout<<"HEALTH LEFT :"<<health;
-    gotoRowCol(9,10);
-        cout<<moves<<" Moves Left ";
-}
-void game_over()
-{
-    system("cls");
+// Define multiple levels (as 2D arrays)
+// Add `-1` for hazardous obstacles (e.g., traps or spikes)
+std::vector<std::vector<std::vector<int>>> levels = {
+    { // Level 1
+        {0, 1, 3, 3, 3, 3, 3, 3, 3, 3},
+        {3, 3, 2, 1, 1, 1, 1, 1, 1, 3},
+        {3, 3, 3, 3, -1, 3, 3, 3, 1, 3}, // Hazard at (2, 4)
+        {3, 1, 3, 1, 3, 1, 1, 3, 1, 3},
+        {3, 1, 3, 1, 3, 1, 3, 3, 1, 3},
+        {3, 1, 3, 1, 3, 1, 3, 1, 1, 3},
+        {3, 1, 3, 3, 3, 1, 3, 3, 3, 3},
+        {3, 1, 1, 1, 1, 1, 3, 1, 1, 3},
+        {3, 3, 3, 3, 3, 3, 3, 1, 3, 3},
+        {3, 3, 3, 3, 3, 3, 1, 1, 3, 0}
+    },
+    { // Level 2
+        {0, 3, 3, 1, 3, 3, 1, 1, 3, 3},
+        {3, 1, 3, 1, 1, 3, 3, 3, 3, 3},
+        {3, 1, 3, 3, 3, 3, 3, 1, -1, 3}, // Hazard at (2, 8)
+        {3, 3, 3, 1, 1, 1, 3, 3, 1, 3},
+        {3, 1, 2, 3, 1, 3, 3, 3, 3, 3},
+        {3, 3, 1, 3, 3, 1, 3, 3, 1, 3},
+        {1, 1, 3, 3, 1, 3, 3, 3, 3, 3},
+        {1, 3, 1, 1, 3, 1, 1, 3, 1, 3},
+        {3, 3, 3, 3, 3, 3, 1, 3, 1, 3},
+        {3, 1, 3, 3, 3, 1, 3, 3, 3, 0}
+    },
+    { // Level 3
+        {0, 3, 3, 3, 3, 3, 1, 3, 1, 3},
+        {1, 3, 1, 2, 1, 3, 1, 1, 3, 1},
+        {1, 1, 1, 3, 3, 3, 3, -1, 1, 3}, // Hazard at (2, 7)
+        {3, 1, 3, 1, 3, 3, 1, 3, 1, 3},
+        {1, 3, 3, 3, 3, 1, 1, 3, 3, 1},
+        {3, 1, 1, 1, 3, 3, 1, 3, 3, 3},
+        {3, 3, 1, 3, 3, 3, 3, 3, 1, 3},
+        {1, 1, 3, 1, 3, 1, 1, 1, 1, 1},
+        {3, 3, 3, 3, 3, 1, 3, 3, 3, 3},
+        {3, 1, 3, 1, 3, 3, 3, 1, 3, 0}
+    },
+    { // Level 4
+    {0, 3, 1, 3, 3, 3, 1, 3, 1, 3},
+    {3, 1, 1, 2, 1, 3, 1, 1, 3, 1},
+    {3, 3, 3, 3, 1, 3, 3, 3, 1, 3},
+    {1, 1, 3, 1, 3, 3, 1, 3, 1, 3},
+    {1, 3, 3, 3, 3, 1, 1, -1, 3, 1}, // Hazard at (4, 8)
+    {3, 1, 1, 1, 3, 3, 1, 3, 3, 3},
+    {3, 3, 1, 3, -1, 3, 3, 3, 1, 3},
+    {1, 1, 3, 1, 3, 1, 3, 1, 3, 3},
+    {1, 3, 1, 3, 3, 3, 1, 1, 3, 1},
+    {3, 1, 3, 3, 3, 3, 3, 3, 3, 0}
+    },
+    { // Level 5
+    {0, 1, 3, 1, 3, 3, 1, 3, 1, 3},
+    {3, 3, 3, 2, 1, 3, 1, 1, 3, 1},
+    {1, 1, 1, 3, 3, 3, 3, -1, 1, 3},
+    {3, 1, 3, 1, 3, 3, 1, 3, 1, 3},
+    {1, 3, 3, 3, 3, 1, 1, 3, 3, 1},
+    {3, 1, 1, 1, 3, -1, 1, 3, 1, 3},
+    {3, 3, 1, 2, 3, 3, 1, 3, 1, 3},
+    {1, 1, 3, 1, 3, 1, 3, 3, 3, 3},
+    {1, 3, 1, 3, 3, 3, 3, 1, -1, 3}, // Hazard at (8,8)
+    {3, 1, 3, 3, 3, 1, 3, 3, 3, 0}
+    }
+};
 
-    score();
-    lev=" ";
-    logo(1);
-    gotoRowCol(15, 50);
-    cout << "=========================" << endl;
-    gotoRowCol(16, 50);
-    cout << "        GAME OVER       " << endl;
-    gotoRowCol(17, 50);
-    cout << "=========================" << endl;
-    gotoRowCol(18, 50);
-    cout << "Thank you for playing!" << endl;
-    getch();
-}
+POINT endPosition = { 9, 9 }; // Endpoint of the maze
 
- void instructions()
- {
-    system("cls");
-    gotoRowCol(5, 50);
-    cout << "Instructions:\n";
-    gotoRowCol(9, 50);
-    cout << "1. Use W/A/S/D to move up/left/down/right.\n";
-    gotoRowCol(10, 50);
-    cout << "2. Collect coins ($) to increase your score.\n";
-    gotoRowCol(11, 50);
-    cout << "3. Reach the exit (E) to win the level.\n";
-    gotoRowCol(12, 50);
-    cout << "4. Avoid running out of moves .\n";
-    gotoRowCol(13, 50);
-    cout << "5. Avoid running out of Health And hitting  \"X\".   \n";
-    gotoRowCol(14, 50);
-    cout << "6. You can pass through "<<'\xB0' <<"  blocks\n";
-    gotoRowCol(15, 50);
-    cout << "7. Have fun and good luck!\n";
-    gotoRowCol(16, 50);
- }
+//Forward Declaration
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+void DrawMaze(HDC hdc);
+void MovePlayer(int dx, int dy);
+void NextLevel();
+std::wstring ConvertToWString(int number); // Conversion function for integers to wide strings
+void RestartLevel(); // Function to restart the level if time runs out or on hazard hit
+void PlayGameSound(const std::wstring& soundFile);
+void PlayBackgroundMusic(const std::wstring& soundFile);
+void StopBackgroundMusic();
+void UndoMove();
+void ProcessEvents();
 
-void intro() {
-    system("cls");
-    string lines[] = {
-        "*******************************",
-        "*                             *",
-        "* WELCOME TO THE TREASURE HUNT*",
-        "*                             *",
-        "*******************************",
-        "*                             *",
-        "*     Get ready to navigate   *",
-        "*        the mysterious       *",
-        "*            maze!            *",
-        "*                             *",
-        "*******************************"
-    };
-    int c=5;
-    gotoRowCol(5,50);
-    sleep(5000);
-    for (const string& line : lines) {
-         sleep(5000);
-        cout << line << endl;
-        gotoRowCol(c++,50);
+int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance,
+    _In_ LPWSTR lpCmdLine, _In_ int nCmdShow) {
+    UNREFERENCED_PARAMETER(hPrevInstance);
+    UNREFERENCED_PARAMETER(lpCmdLine);
+
+    hInst = hInstance;
+
+    WNDCLASS wc = {};
+    wc.lpfnWndProc = WndProc;
+    wc.hInstance = hInstance;
+    wc.lpszClassName = L"MazeGameClass";
+    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+
+    RegisterClass(&wc);
+
+    hWndMain = CreateWindow(L"MazeGameClass", L"Maze Game", WS_OVERLAPPEDWINDOW,
+        CW_USEDEFAULT, CW_USEDEFAULT, CELL_SIZE * GRID_COLS + 20, CELL_SIZE * GRID_ROWS + 40,
+        nullptr, nullptr, hInstance, nullptr);
+
+    if (!hWndMain) {
+        return FALSE;
     }
 
-    sleep(5000);
-    system("cls");
+    ShowWindow(hWndMain, nCmdShow);
+    UpdateWindow(hWndMain);
 
-    string title = "THE TREASURE HUNT";
-    string subtitle = "Your challenge awaits...";
+    // Start the timer
+    SetTimer(hWndMain, TIMER_ID, TIMER_INTERVAL, nullptr);
+    //startup sound
+    PlayGameSound(L"thrill01.wav");
 
-    gotoRowCol(5, 50);
-    for (char c : title) {
-        cout << c;
-        sleep(5000);
+    Sleep(2000); //delay of 3 seconds
+    // Play background music in a separate thread
+    std::thread bgMusicThread(PlayBackgroundMusic, L"background 01.mp3");
+    bgMusicThread.detach(); // Detach the thread to run independently
+
+    // Main message loop
+    MSG msg;
+    while (GetMessage(&msg, nullptr, 0, 0)) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
     }
 
-    gotoRowCol(7, 45);
-    for (char c : subtitle) {
-        cout << c;
-        sleep(5000);
-    }
+    // Stop background music when the game ends
+    StopBackgroundMusic();
 
-    sleep(50000);
-    instructions();
-    cout << "Press any key to start the game...";
-
-    getch();
-    system("cls");
+    return (int)msg.wParam;
 }
 
-void win() {
-    system("cls");
-    logo(1);
+LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    switch (message) {
+    case WM_PAINT: {
+        PAINTSTRUCT ps;
+        HDC hdc = BeginPaint(hWnd, &ps);
 
-    string lines[] = {
-        "*******************************",
-        "*                             *",
-        "*    CONGRATULATIONS! YOU     *",
-        "*       WON THE GAME!         *",
-        "*                             *",
-        "*******************************"
-    };
+        // Double buffering setup
+        HDC hdcMem = CreateCompatibleDC(hdc);
+        HBITMAP hbmMem = CreateCompatibleBitmap(hdc, CELL_SIZE * GRID_COLS + CELL_SIZE * 3, CELL_SIZE * GRID_ROWS);
+        HBITMAP hbmOld = (HBITMAP)SelectObject(hdcMem, hbmMem);
 
-    for (const string& line : lines) {
-        gotoRowCol(10, 45);
-        cout << line << endl;
-        sleep(500);
+        // Clear the background of the buffer
+        HBRUSH hbrBackground = CreateSolidBrush(RGB(255, 255, 255));
+        RECT bufferRect = { 0, 0, CELL_SIZE * GRID_COLS + CELL_SIZE * 3, CELL_SIZE * GRID_ROWS };
+        FillRect(hdcMem, &bufferRect, hbrBackground);
+        DeleteObject(hbrBackground);
+
+        // Draw the maze onto the buffer
+        DrawMaze(hdcMem);
+
+        // Draw the mini box (2x3)
+        int miniBoxStartX = GRID_COLS * CELL_SIZE + 20; // Padding for mini box
+        int miniBoxStartY = 20; // Padding from top
+        RECT miniBox = {
+            miniBoxStartX,
+            miniBoxStartY,
+            miniBoxStartX + CELL_SIZE * 3, // 3 columns
+            miniBoxStartY + CELL_SIZE * 2  // 2 rows
+        };
+        HBRUSH miniBoxBrush = CreateSolidBrush(RGB(200, 200, 200)); // Gray color for mini box
+        FillRect(hdcMem, &miniBox, miniBoxBrush);
+        DeleteObject(miniBoxBrush);
+
+        // Draw border around the mini box
+        FrameRect(hdcMem, &miniBox, (HBRUSH)GetStockObject(BLACK_BRUSH));
+
+        // Draw the "Lives," "Time," and "Score" text over the mini box
+        HFONT hFont = CreateFont(
+            20,                  // Height of the font
+            0,                   // Width of the font
+            0,                   // Escapement angle
+            0,                   // Orientation angle
+            FW_BOLD,             // Font weight
+            FALSE,               // Italic
+            FALSE,               // Underline
+            FALSE,               // Strikeout
+            DEFAULT_CHARSET,     // Character set
+            OUT_OUTLINE_PRECIS,  // Output precision
+            CLIP_DEFAULT_PRECIS, // Clipping precision
+            CLEARTYPE_QUALITY,   // Output quality
+            VARIABLE_PITCH,      // Pitch and family
+            L"Segoe UI"          // Font name
+        );
+
+        HFONT oldFont = (HFONT)SelectObject(hdcMem, hFont);
+        SetBkMode(hdcMem, TRANSPARENT); // Transparent background for text
+        SetTextColor(hdcMem, RGB(0, 0, 0)); // Black text color
+
+        // Display player lives
+        std::wstring livesText = L"Lives: " + ConvertToWString(lives);
+        TextOut(hdcMem, miniBoxStartX + 10, miniBoxStartY + 10, livesText.c_str(), livesText.length());
+
+        // Display time remaining
+        std::wstring timerText = L"Time: " + ConvertToWString(timeLeft) + L" sec";
+        TextOut(hdcMem, miniBoxStartX + 10, miniBoxStartY + 40, timerText.c_str(), timerText.length());
+
+        // Display the score
+        std::wstring scoreText = L"Score: " + ConvertToWString(score);
+        TextOut(hdcMem, miniBoxStartX + 10, miniBoxStartY + 70, scoreText.c_str(), scoreText.length());
+
+        // Restore font and cleanup
+        SelectObject(hdcMem, oldFont);
+        DeleteObject(hFont);
+
+        // Copy the buffer to the screen
+        BitBlt(hdc, 0, 0, CELL_SIZE * GRID_COLS + CELL_SIZE * 3, CELL_SIZE * GRID_ROWS, hdcMem, 0, 0, SRCCOPY);
+
+        // Cleanup
+        SelectObject(hdcMem, hbmOld);
+        DeleteObject(hbmMem);
+        DeleteDC(hdcMem);
+
+        EndPaint(hWnd, &ps);
+    } break;
+
+    case WM_KEYDOWN: {
+        switch (wParam) {
+        case VK_UP:
+            MovePlayer(0, -1);
+            break;
+        case VK_DOWN:
+            MovePlayer(0, 1);
+            break;
+        case VK_LEFT:
+            MovePlayer(-1, 0);
+            break;
+        case VK_RIGHT:
+            MovePlayer(1, 0);
+            break;
+        case 'U':
+            UndoMove();
+            break; // Undo the last move
+        }
+        InvalidateRect(hWnd, nullptr, FALSE); // Trigger repaint without erasing background
+    } break;
+
+    case WM_TIMER: {
+        if (wParam == TIMER_ID) {
+            timeLeft--;
+            if (timeLeft <= 0 && !timeOutDisplayed) {
+                lives--;
+                if (lives == 0)
+                {
+                    MessageBox(hWndMain, L"Game Over! Exiting...", L"Maze Game", MB_OK);
+                    Sleep(1000);
+                    PostQuitMessage(0); // End the game
+                }
+                timeOutDisplayed = true; // Set the flag to true to avoid showing again
+                if (lives > 0)
+                {
+                    MessageBox(hWnd, L"Time's up! Restarting level.", L"Timer Alert", MB_OK);
+                    RestartLevel();
+                    timeOutDisplayed = false; // Reset the flag after restarting the level
+                }
+            }
+            InvalidateRect(hWnd, nullptr, FALSE); // Trigger repaint without erasing background
+        }
+    } break;
+
+    case WM_DESTROY:
+        KillTimer(hWnd, TIMER_ID); // Stop the timer when the window is destroyed
+        PostQuitMessage(0);
+        break;
+
+    default:
+        return DefWindowProc(hWnd, message, wParam, lParam);
     }
-
-    sleep(500);
-    system("cls");
-
-    string congrats = "CONGRATULATIONS!";
-    string message = "You successfully navigated the maze!";
-    string scoreMessage = "Your score is: " + to_string(coins);
-
-    gotoRowCol(5, 40);
-    for (char c : congrats) {
-        cout << c;
-        sleep(50);
-    }
-
-    gotoRowCol(7, 35);
-    for (char c : message) {
-        cout << c;
-        sleep(50);
-    }
-
-    gotoRowCol(9, 38);
-    for (char c : scoreMessage) {
-        cout << c;
-        sleep(50);
-    }
-
-    sleep(500);
-    cout << "\n\nEnter your name: ";
-    string playerName;
-    cin >> playerName;
-
-    recordScore(playerName, coins);
-    displayLeaderboard();
-
-    win1 = 1;
-    getch();
+    return 0;
 }
 
-// Function for File Handling
-void recordScore(string playerName, int score) {
-    ofstream file("scores.txt", ios::app);
-    if (file.is_open()) {
-        file << playerName << " " << score << endl;
-        file.close();
-    } else {
-        cout << "Unable to open file to record score." << endl;
+// Function to play sound
+void PlayGameSound(const std::wstring& soundFile) {
+    PlaySound(soundFile.c_str(), NULL, SND_FILENAME | SND_ASYNC);
+}
+
+void PlayBackgroundMusic(const std::wstring& soundFile) {
+    // Open the music file
+    std::wstring command = L"open \"" + soundFile + L"\" type mpegvideo alias bgm";
+    mciSendString(command.c_str(), nullptr, 0, nullptr);
+
+    // Loop the music
+    mciSendString(L"play bgm repeat", nullptr, 0, nullptr);
+}
+
+void StopBackgroundMusic() {
+    mciSendString(L"stop bgm", nullptr, 0, nullptr);
+    mciSendString(L"close bgm", nullptr, 0, nullptr);
+}
+
+void UndoMove() {
+    if (!playerMoveHistory.empty()) {
+        // Revert to the previous position
+        playerPosition = playerMoveHistory.top();
+        playerMoveHistory.pop();
+
+        // Redraw the maze
+        InvalidateRect(hWndMain, nullptr, TRUE);
+    }
+    else {
+        eventQueue.push(L"No moves to undo!"); // Add event to queue
+        ProcessEvents();
     }
 }
 
-void displayLeaderboard() {
-    ifstream file("scores.txt");
-    if (!file) {
-        cout << "No scores recorded yet!\n";
-        return;
+void ProcessEvents() {
+    while (!eventQueue.empty()) {
+        std::wstring event = eventQueue.front();
+        eventQueue.pop();
+
+        // Display the event to the player
+        MessageBox(hWndMain, event.c_str(), L"Game Event", MB_OK);
     }
+}
 
-    string playerName;
-    int score;
+void DrawMaze(HDC hdc) {
+    std::vector<std::vector<int>> currentMaze = levels[currentLevel];
 
-    string names[100];
-    int scores[100];
-    int count = 0;
+    for (int row = 0; row < GRID_ROWS; ++row) {
+        for (int col = 0; col < GRID_COLS; ++col) {
+            RECT cell = { col * CELL_SIZE, row * CELL_SIZE, (col + 1) * CELL_SIZE, (row + 1) * CELL_SIZE };
+            HBRUSH brush;
 
-    while (file >> playerName >> score) {
-        names[count] = playerName;
-        scores[count] = score;
-        count++;
-    }
-    file.close();
+            // Determine the cell color based on its type
+            if (currentMaze[row][col] == 1) {
+                brush = CreateSolidBrush(RGB(0, 0, 0)); // Wall color
+            }
+            else if (currentMaze[row][col] == 3) {
+                brush = CreateSolidBrush(RGB(255, 255, 255)); // Path color
+            }
+            else if (currentMaze[row][col] == -1) {
+                brush = CreateSolidBrush(RGB(255, 255, 255)); // White background for hazard
+            }
+            else if (currentMaze[row][col] == 2) {
+                brush = CreateSolidBrush(RGB(255, 255, 255)); // Power-up color (cyan)
+            }
+            else if (endPosition.x == col && endPosition.y == row) {
+                brush = CreateSolidBrush(RGB(255, 0, 0)); // Red background for the door (end point)
+            }
+            else {
+                brush = CreateSolidBrush(RGB(255, 255, 255)); // Boundary color
+            }
 
-    for (int i = 0; i < count - 1; i++) {
-        for (int j = 0; j < count - i - 1; j++) {
-            if (scores[j] < scores[j + 1]) {
-                swap(scores[j], scores[j + 1]);
-                swap(names[j], names[j + 1]);
+            // Fill the cell and draw grid lines
+            FillRect(hdc, &cell, brush);
+            DeleteObject(brush);
+            FrameRect(hdc, &cell, (HBRUSH)GetStockObject(BLACK_BRUSH));
+
+            // Draw hazard character in the cell
+            if (currentMaze[row][col] == -1) {
+                HFONT hFont = CreateFont(
+                    40,                  // Height of the font (adjust as needed to fit within the grid)
+                    0,                   // Width of the font (0 for default aspect ratio)
+                    0,                   // Escapement angle
+                    0,                   // Orientation angle
+                    FW_BOLD,             // Font weight (FW_NORMAL or FW_BOLD)
+                    FALSE,               // Italic
+                    FALSE,               // Underline
+                    FALSE,               // Strikeout
+                    DEFAULT_CHARSET,     // Character set
+                    OUT_OUTLINE_PRECIS,  // Output precision
+                    CLIP_DEFAULT_PRECIS, // Clipping precision
+                    CLEARTYPE_QUALITY,   // Output quality
+                    VARIABLE_PITCH,      // Pitch and family
+                    L"Segoe UI Emoji"    // Font name (supports emoji)
+                );
+
+                HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
+
+                // Hazard symbol (☠️)
+                std::wstring hazardChar = L"☠️";
+
+                // Calculate the position of the emoji within the grid cell
+                SIZE textSize;
+                GetTextExtentPoint32(hdc, hazardChar.c_str(), hazardChar.length(), &textSize);
+
+                int textX = col * CELL_SIZE + (CELL_SIZE - textSize.cx) / 2; // Center horizontally
+                int textY = row * CELL_SIZE + (CELL_SIZE - textSize.cy) / 2; // Center vertically
+
+                // Set text properties
+                SetBkMode(hdc, TRANSPARENT);          // Transparent background for text
+                SetTextColor(hdc, RGB(0, 0, 0));    // Text color (Red for hazard)
+
+                // Draw the hazard emoji
+                TextOut(hdc, textX, textY, hazardChar.c_str(), hazardChar.length());
+
+                // Restore the previous font and clean up
+                SelectObject(hdc, oldFont);
+                DeleteObject(hFont);
+            }
+
+            if (currentMaze[row][col] == 2) { // Power-up (collectible)
+                brush = CreateSolidBrush(RGB(0, 255, 255)); // Power-up color (cyan)
+
+                // Define the diamond symbol (🍒)
+                HFONT hFont = CreateFont(
+                    40,                  // Height of the font (adjust as needed to fit within the grid)
+                    0,                   // Width of the font (0 for default aspect ratio)
+                    0,                   // Escapement angle
+                    0,                   // Orientation angle
+                    FW_BOLD,             // Font weight (FW_NORMAL or FW_BOLD)
+                    FALSE,               // Italic
+                    FALSE,               // Underline
+                    FALSE,               // Strikeout
+                    DEFAULT_CHARSET,     // Character set
+                    OUT_OUTLINE_PRECIS,  // Output precision
+                    CLIP_DEFAULT_PRECIS, // Clipping precision
+                    CLEARTYPE_QUALITY,   // Output quality
+                    VARIABLE_PITCH,      // Pitch and family
+                    L"Segoe UI Emoji"    // Font name (supports emoji)
+                );
+
+                HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
+
+                // Diamond symbol (💎)
+                std::wstring diamondChar = L"💎";
+
+                // Calculate the position of the emoji within the grid cell
+                SIZE textSize;
+                GetTextExtentPoint32(hdc, diamondChar.c_str(), diamondChar.length(), &textSize);
+
+                int textX = col * CELL_SIZE + (CELL_SIZE - textSize.cx) / 2; // Center horizontally
+                int textY = row * CELL_SIZE + (CELL_SIZE - textSize.cy) / 2; // Center vertically
+
+                // Set text properties
+                SetBkMode(hdc, TRANSPARENT);          // Transparent background for text
+                SetTextColor(hdc, RGB(35, 178, 255));  // Text color (Cyan for the diamond)
+
+                // Draw the diamond emoji
+                TextOut(hdc, textX, textY, diamondChar.c_str(), diamondChar.length());
+
+                // Restore the previous font and clean up
+                SelectObject(hdc, oldFont);
+                DeleteObject(hFont);
+            }
+
+            if (currentMaze[row][col] == 3) { // Mini-dot
+                HFONT hFont = CreateFont(
+                    30,                  // Smaller font size for mini-dots
+                    0,                   // Width of the font (0 for default aspect ratio)
+                    0,                   // Escapement angle
+                    0,                   // Orientation angle
+                    FW_BOLD,             // Font weight
+                    FALSE,               // Italic
+                    FALSE,               // Underline
+                    FALSE,               // Strikeout
+                    DEFAULT_CHARSET,     // Character set
+                    OUT_OUTLINE_PRECIS,  // Output precision
+                    CLIP_DEFAULT_PRECIS, // Clipping precision
+                    CLEARTYPE_QUALITY,   // Output quality
+                    VARIABLE_PITCH,      // Pitch and family
+                    L"Segoe UI Emoji"    // Font name
+                );
+
+                HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
+
+                // Mini-dot symbol (•)
+                std::wstring miniDotChar = L"•";
+
+                // Calculate position within the cell
+                SIZE textSize;
+                GetTextExtentPoint32(hdc, miniDotChar.c_str(), miniDotChar.length(), &textSize);
+
+                int textX = col * CELL_SIZE + (CELL_SIZE - textSize.cx) / 2; // Center horizontally
+                int textY = row * CELL_SIZE + (CELL_SIZE - textSize.cy) / 2; // Center vertically
+
+                // Set text properties
+                SetBkMode(hdc, TRANSPARENT);          // Transparent background for text
+                SetTextColor(hdc, RGB(255, 215, 0));  // Gold color for mini-dots
+
+                // Draw the mini-dot
+                TextOut(hdc, textX, textY, miniDotChar.c_str(), miniDotChar.length());
+
+                // Restore font and clean up
+                SelectObject(hdc, oldFont);
+                DeleteObject(hFont);
+            }
+
+            // Draw the door character at the end position
+            if (endPosition.x == col && endPosition.y == row) {
+                HFONT hFont = CreateFont(
+                    40,                  // Height of the font (adjust as needed to fit within the grid)
+                    0,                   // Width of the font (0 for default aspect ratio)
+                    0,                   // Escapement angle
+                    0,                   // Orientation angle
+                    FW_BOLD,             // Font weight (FW_NORMAL or FW_BOLD)
+                    FALSE,               // Italic
+                    FALSE,               // Underline
+                    FALSE,               // Strikeout
+                    DEFAULT_CHARSET,     // Character set
+                    OUT_OUTLINE_PRECIS,  // Output precision
+                    CLIP_DEFAULT_PRECIS, // Clipping precision
+                    CLEARTYPE_QUALITY,   // Output quality
+                    VARIABLE_PITCH,      // Pitch and family
+                    L"Segoe UI Emoji"    // Font name (supports emoji)
+                );
+
+                HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
+
+                // Door symbol (🚪)
+                std::wstring doorChar = L"🚪";
+
+                // Calculate the position of the emoji within the grid cell
+                SIZE textSize;
+                GetTextExtentPoint32(hdc, doorChar.c_str(), doorChar.length(), &textSize);
+
+                int textX = col * CELL_SIZE + (CELL_SIZE - textSize.cx) / 2; // Center horizontally
+                int textY = row * CELL_SIZE + (CELL_SIZE - textSize.cy) / 2; // Center vertically
+
+                // Set text properties
+                SetBkMode(hdc, TRANSPARENT);          // Transparent background for text
+                SetTextColor(hdc, RGB(255, 255, 255)); // Text color (White for door)
+
+                // Draw the door emoji
+                TextOut(hdc, textX, textY, doorChar.c_str(), doorChar.length());
+
+                // Restore the previous font and clean up
+                SelectObject(hdc, oldFont);
+                DeleteObject(hFont);
             }
         }
     }
-    system("cls");
-    int c=5;
-    gotoRowCol(5,45);
-    cout << "Leaderboard:\n";
-    gotoRowCol(++c,45);
-    cout << "==============================\n";
-    for (int i = 0; i < count; i++) {
-        gotoRowCol(++c,45);
-        cout << "|"<<names[i]<<""  ;
-        gotoRowCol(c,55);
-        cout<< " |"<<scores[i] ;
-        gotoRowCol(c,65);
-        cout<< " |points|";
-    }
-    gotoRowCol(++c,45);
-    cout << "==============================\n";
+
+    // Draw the player character using a custom font
+    HFONT hFont = CreateFont(
+        50,                  // Height of the font (increase for larger size)
+        0,                   // Width of the font (0 for default aspect ratio)
+        0,                   // Escapement angle
+        0,                   // Orientation angle
+        FW_BOLD,             // Font weight (FW_NORMAL or FW_BOLD)
+        FALSE,               // Italic
+        FALSE,               // Underline
+        FALSE,               // Strikeout
+        DEFAULT_CHARSET,     // Character set
+        OUT_OUTLINE_PRECIS,  // Output precision
+        CLIP_DEFAULT_PRECIS, // Clipping precision
+        CLEARTYPE_QUALITY,   // Output quality
+        VARIABLE_PITCH,      // Pitch and family
+        L"Segoe UI Emoji"    // Font name (supports emoji)
+    );
+
+    HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
+
+    // Define the player emoji
+    std::wstring playerChar = L"🤺";
+
+    // Calculate the position of the emoji within the grid cell
+    SIZE textSize;
+    GetTextExtentPoint32(hdc, playerChar.c_str(), playerChar.length(), &textSize);
+
+    int textX = playerPosition.x * CELL_SIZE + (CELL_SIZE - textSize.cx) / 2; // Center horizontally
+    int textY = playerPosition.y * CELL_SIZE + (CELL_SIZE - textSize.cy) / 2; // Center vertically
+
+    // Set text properties
+    SetBkMode(hdc, TRANSPARENT);          // Transparent background for text
+    SetTextColor(hdc, RGB(0, 25, 255));    // Text color (Blue for the player)
+
+    // Draw the player emoji
+    TextOut(hdc, textX, textY, playerChar.c_str(), playerChar.length());
+
+    // Restore the previous font and clean up
+    SelectObject(hdc, oldFont);
+    DeleteObject(hFont);
 }
 
-struct Node {
-    char type;
-    Node* up;
-    Node* down;
-    Node* left;
-    Node* right;
+void MovePlayer(int dx, int dy) {
+    int newX = playerPosition.x + dx;
+    int newY = playerPosition.y + dy;
 
-    Node(char t) : type(t), up(nullptr), down(nullptr), left(nullptr), right(nullptr) {}
-};
+    std::vector<std::vector<int>>& currentMaze = levels[currentLevel];
 
-
-void print_board_(int dimensions_x, int dimensions_y) {
-    logo(1);
-    if(lev=="EASY"||lev=="MEDIUM")
-          dimensions_x=2*dimensions_y*2;
-            else
-    dimensions_x=2*dimensions_y;
-    char b=178;
-    int row = 11, col = 50;
-    gotoRowCol(row, col);
-    for (int i = 0; i <= dimensions_x ; i++) {
-        cout << b;
+    if (newX >= 0 && newX < GRID_COLS && newY >= 0 && newY < GRID_ROWS) {
+        if (currentMaze[newY][newX] == 0) { // Starting Point
+            playerMoveHistory.push(playerPosition); // Save current position to the stack
+            playerPosition.x = newX;
+            playerPosition.y = newY;
+        }
+        else if (currentMaze[newY][newX] == -1) { // Hazard
+            lives--; // Decrease a life on hazard hit
+            eventQueue.push(L"You hit a hazard! Restarting level."); // Add event to queue
+            PlayGameSound(L"hazard01.wav"); // Play hazard sound
+            RestartLevel();
+        }
+        else if (currentMaze[newY][newX] == 2) { // Power-up
+            lives++; // Increase lives
+            timeLeft += 5; // Add extra time
+            currentMaze[newY][newX] = 0; // Remove the power-up from the maze
+            playerMoveHistory.push(playerPosition); // Save current position to the stack
+            playerPosition.x = newX;
+            playerPosition.y = newY;
+            PlayGameSound(L"powerup.wav"); // Play power-up sound
+            eventQueue.push(L"You collected a power-up! +1 life, +5 seconds."); // Add event to queue
+        }
+        else if (currentMaze[newY][newX] == 3) { // Mini-dot
+            score += 1; // Increment score
+            currentMaze[newY][newX] = 0; // Remove the mini-dot from the maze
+            playerMoveHistory.push(playerPosition); // Save current position to the stack
+            playerPosition.x = newX;
+            playerPosition.y = newY;
+            PlayGameSound(L"mov.wav"); // Play movement sound
+        }
     }
 
-    for (int i = 0; i <= dimensions_y + 1; i++) {
-        gotoRowCol(row, col);
-        cout << b;
-        row++;
+    // Check if the player has reached the end position
+    if (playerPosition.x == endPosition.x && playerPosition.y == endPosition.y) {
+        if (currentLevel == levels.size() - 1) { // If last level
+            PlayGameSound(L"win01.wav"); // Play winning sound
+            eventQueue.push(L"You Won!"); // Add win event to queue
+            Sleep(2000);
+            PostQuitMessage(0); // End the game
+        }
+        else {
+            PlayGameSound(L"lvl.wav"); // Play transfer(teleport) sound
+            NextLevel();
+        }
     }
 
-    for (int i = 0; i <= dimensions_x ; i++) {
-        cout << b;
-        col++;
-    }
+    // Process queued events
+    ProcessEvents();
 
-    for (int i = 0; i <= dimensions_y + 1; i++) {
-        row--;
-        gotoRowCol(row, col);
-        cout << b;
-    }
-    row = 10, col = 49;
-    gotoRowCol(row, col);
-
-    for (int i = 0; i <= dimensions_x + 4; i++) {
-        cout << b;
-    }
-
-     for (int i = 0; i <= dimensions_y + 2; i++) {
-            gotoRowCol(++row, col);
-        cout << b;
-    }
-
-     for (int i = 0; i <= dimensions_x + 2; i++) {
-            gotoRowCol(row, ++col);
-        cout << b;
-    }
-
-     for (int i = 0; i <= dimensions_y + 2; i++) {
-            gotoRowCol(--row, col);
-        cout << b;
-    }
-
-    col++;
-     for (int i = 0; i <= dimensions_y + 2; i++) {
-            gotoRowCol(++row, col);
-        cout << b;
-    }
-
-     row = 9, col = 48;
-       for (int i = 0; i <= dimensions_y + 3; i++) {
-            gotoRowCol(++row, col);
-        cout << b;
-       }
-     score();
+    // Redraw the maze to reflect changes
+    InvalidateRect(hWndMain, nullptr, TRUE);
 }
 
-void displayMaze(Node* start,int x) {
-    Node* row = start;
-    int r = 12, c = 51;
-    print_board_(x, x);
-    while (row) {
-        Node* col = row;
-        while (col) {
-            gotoRowCol(r, c);
-            cout << col->type << "";
-            col = col->right;
-            if(lev=="EASY"||lev=="MEDIUM")
-            c+=2;
-            else
-                c++;
-        }
-        r++;
-        c = 51;
-        row = row->down;
-    }
-    gotoRowCol(10,10);
+void NextLevel() {
+    currentLevel++;
+    playerPosition = { 0, 0 }; // Reset player position
+    timeLeft = 20; // Reset timer
 }
 
-bool MOVPlayer(Node*& player, char MOV) {
-    Node* next = nullptr;
-    if (MOV == 'W' && player->up && player->up->type != '\xB1') {
-        next = player->up;
-
-    } else if (MOV == 'A' && player->left && player->left->type != '\xB1') {
-        next = player->left;
-
-    } else if (MOV == 'S' && player->down && player->down->type != '\xB1') {
-        next = player->down;
-
-    } else if (MOV == 'D' && player->right && player->right->type != '\xB1') {
-        next = player->right;
-
+void RestartLevel() {
+    if (lives == 0)
+    {
+        MessageBox(hWndMain, L"Game Over! Exiting...", L"Maze Game", MB_OK);
+        Sleep(1000);
+        PostQuitMessage(0); // End the game
     }
-    else if (MOV == 'E' ) {
-        exit_();
-    }
-
-    if (next) {
-        if (next->type == 'E') {
-            player->type = ' ';
-            next->type = 'P';
-            player = next;
-            win1=1;
-            return true;
-        }
-        if(next->type == '$') {
-            coins = coins + 10;
-        }
-        if(next->type == 'X') {
-           health--;
-        }
-
-        player->type = ' ';
-        next->type = 'P';
-        player = next;
-
-        return true;
-    }
-    return false;
+    playerPosition = { 0, 0 }; // Reset player position
+    timeLeft = 20; // Reset timer
+    InvalidateRect(hWndMain, nullptr, TRUE);
 }
 
-//Function for levels in game
-void level_10() {
-    ex=0;
-    L=10;
-    health=5;
-    lev="HARD";
-    moves=150;
-    win1=0;
-    int x=30;
-    Node* nodes[30][60];
-    char maze[30][60] = {
-    {'P', '.', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.','\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X'},
-    {'.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.',},
-    {'.', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.'},
-    {'.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.','X', '.', '.', '\xB1', '.', '\xB1', '.', '.', '$', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', 'X', '.','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '.', '$', '.', '.', '$', '$'},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.'},
-    {'X', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1'},
-    {'.', '.', '.', '\xB1', '.', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','$', '\xB1', '.', '$', '$', '.', '.', '.', '.', '.', '\xB1', '.', '\xB0', '.', '\xB1', '.', '.', '\xB1', '\xB1', 'E','\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1','\xB1', '\xB1', '\xB1', '$','$', '.', '$', '\xB1', '\xB1', '\xB1'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', 'X', '.', '$', '\xB1', '.', '\xB1', '.', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.','\xB1', '\xB1', '\xB1', '$','.', '$', '$', '\xB1', '\xB1', '\xB1'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.','\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1','\xB1', '\xB1', '\xB1', '$','$', '$', '$', '\xB1', '\xB1', '\xB1'},
-    {'.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', 'X', '.', '.', '$', '.', '.', '$', '$','.', '\xB1', '$', '\xB1', '$', '\xB1', '\xB1', '.', 'X', '.',},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X'},
-    {'.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1' },
-    {'.', '.', '\xB1', '.', '\xB1', '.','.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1'},
-    {'.', '.', '.', '.', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1','\xB1', '.', '\xB1', '.'},
-    {'.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.','\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.','.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1'},
-    {'.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1','\xB1', '\xB1', '\xB1','.', '.', 'X', '.', '.', '$', '.', '.', '$', '$'},
-    {'.', '\xB1','.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1','.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1','\xB1','\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.'},
-    {'.', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.'},
-    {'.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.','X', '.', '.', '\xB1', '.', '\xB1', '.', '.', '$', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', 'X', '.','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '.', '$', '.', '.', '$', '$'},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.'},
-    {'X', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1'},
-    {'.', '.', '.', '\xB1', '.', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','$', '\xB1', '.', '$', '$', '.', '.', '.', '.', '.', '\xB1', '.', '\xB0', '.', '\xB1', '.', '.', '\xB1', '\xB1', 'E','\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1','\xB1', '\xB1', '\xB1', '$','$', '.', '$', '\xB1', '\xB1', '\xB1'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', 'X', '.', '$', '\xB1', '.', '\xB1', '.', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.','\xB1', '\xB1', '\xB1', '$','.', '$', '$', '\xB1', '\xB1', '\xB1'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.','\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1','\xB1', '\xB1', '\xB1', '$','$', '$', '$', '\xB1', '\xB1', '\xB1'}
-
-    };
-
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < 2*x; j++) {
-            nodes[i][j] = new Node(maze[i][j]);
-        }
-    }
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < 2*x; j++) {
-            if (i > 0) nodes[i][j]->up = nodes[i - 1][j];
-            if (i < x-1) nodes[i][j]->down = nodes[i + 1][j];
-            if (j > 0) nodes[i][j]->left = nodes[i][j - 1];
-            if (j < (2*x)-1) nodes[i][j]->right = nodes[i][j + 1];
-        }
-    }
-
-    Node* player = nodes[0][0];
-    cout << "Navigate the maze to find the exit (E).\n";
-
-    char MOV;
-    bool gameWon = false;
-
-    while (!gameWon) {
-        system("cls");
-        displayMaze(nodes[0][0], x);
-        score();
-
-        cout << "MOV (W/A/S/D/E): ";
-        cin >> MOV;
-        if (!MOVPlayer(player, MOV)) {
-            cout << "Invalid MOV!\n";
-            continue;
-        }
-        moves--;
-
-       if (moves == 0||health==0||ex==1) {
-            game_over();
-            return;
-        }
-
-        system("cls");
-        displayMaze(nodes[0][0], x);
-        if (win1) {
-            coins += 200;
-            win();
-            gameWon = true;
-        }
-    }
-
-    // Freeing memory
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < 2*x; j++) {
-            delete nodes[i][j];
-        }
-    }
-    system("cls");
-    logo(1);
-    gotoRowCol(9,50);
-    cout<<"1)      FOR MAIN MENU  PRESS 1 ";
-    gotoRowCol(11,50);
-    cout<<"2)        PRESS ANY KEY FOR PLAY NEXT LEVEL ";
-    int choice;
-    gotoRowCol(18,25);
-    cout<<"Enter your Choice ::" ;
-    cin>>choice;
-    if(choice!=1)
-    {
-
-    }
+std::wstring ConvertToWString(int number) {
+    std::wstringstream ss;
+    ss << number;
+    return ss.str();
 }
-
-void level_9() {
-    ex=0;
-    win1=0;
-    L=9;
-    health=5;
-    lev="HARD";
-    moves=150;
-    int x=30;
-    Node* nodes[30][60];
-
-    char maze[30][60] = {
-    {'P', '.', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.','\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.','X', '.', '.', '\xB1', '.', '\xB1', '.', '.', '$', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', 'X', '.','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '.', '$', '.', '.', '$', '$'},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.'},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.'},
-    {'X', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1'},
-    {'.', '.', '.', '\xB1', '.', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','$', '\xB1', '.', '$', '$', '.', '.', '.', '.', '.', '\xB1', '.', '\xB0', '.', '\xB0', '.', '.', '\xB1', '\xB1', '.','\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1','\xB1', '\xB1', '\xB1', '$','$', '.', '$', '\xB1', '\xB1', '\xB1'},
-    {'.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1'},
-    {'X', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1'},
-    {'.', '.', '.', '\xB1', '.', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.'},
-    {'.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.',},
-    {'.', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','$', '\xB1', '.', '$', '$', '.', '.', '.', '.', '.', '\xB1', '.', '\xB0', '.', '\xB1', '.', '.', '\xB1', '\xB1', 'E','\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1','\xB1', '\xB1', '\xB1', '$','$', '.', '$', '\xB1', '\xB1', '\xB1'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', 'X', '.', '$', '\xB1', '.', '\xB1', '.', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.','\xB1', '\xB1', '\xB1', '$','.', '$', '$', '\xB1', '\xB1', '\xB1'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.','\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1','\xB1', '\xB1', '\xB1', '$','$', '$', '$', '\xB1', '\xB1', '\xB1'},
-    {'.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', 'X', '.', '.', '$', '.', '.', '$', '$','.', '\xB1', '$', '\xB1', '$', '\xB1', '\xB1', '.', 'X', '.',},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1',  'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X','\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', 'X', 'X', 'X', 'X', 'X', 'X', 'X'},
-    {'.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1' },
-    {'.', '.', '\xB1', '.', '\xB1', '.','.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1'},
-    {'.', '.', '.', '.', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1','\xB1', '.', '\xB1', '.'},
-    {'.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.','\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.','.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1'},
-    {'.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1','\xB1', '\xB1', '\xB1','.', '.', 'X', '.', '.', '$', '.', '.', '$', '$'},
-    {'.', '\xB1','.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1','.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1','\xB1','\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.'},
-    {'.', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.'},
-    {'.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.','X', '.', '.', '\xB1', '.', '\xB1', '.', '.', '$', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', 'X', '.','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '.', '$', '.', '.', '$', '$'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', 'X', '.', '$', '\xB1', '.', '\xB1', '.', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.','\xB1', '\xB1', '\xB1', '$','.', '$', '$', '\xB1', '\xB1', '\xB1'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.','\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1','\xB1', '\xB1', '\xB1', '$','$', '$', '$', '\xB1', '\xB1', '\xB1'}
-
-    };
-
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < 2*x; j++) {
-            nodes[i][j] = new Node(maze[i][j]);
-        }
-    }
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < 2*x; j++) {
-            if (i > 0) nodes[i][j]->up = nodes[i - 1][j];
-            if (i < x-1) nodes[i][j]->down = nodes[i + 1][j];
-            if (j > 0) nodes[i][j]->left = nodes[i][j - 1];
-            if (j < (2*x)-1) nodes[i][j]->right = nodes[i][j + 1];
-        }
-    }
-
-    Node* player = nodes[0][0];
-    cout << "Navigate the maze to find the exit (E).\n";
-
-    char MOV;
-    bool gameWon = false;
-
-    while (!gameWon) {
-        system("cls");
-        displayMaze(nodes[0][0], x);
-        score();
-
-        cout << "MOV (W/A/S/D/E): ";
-        cin >> MOV;
-        if (!MOVPlayer(player, MOV)) {
-            cout << "Invalid MOV!\n";
-            continue;
-        }
-        moves--;
-
-       if (moves == 0||health==0||ex==1) {
-            game_over();
-            return;
-        }
-
-        system("cls");
-        displayMaze(nodes[0][0], x);
-        if (win1) {
-            coins += 200;
-            win();
-            gameWon = true;
-        }
-    }
-
-    // Freeing memory
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < 2*x; j++) {
-            delete nodes[i][j];
-        }
-    }
-    system("cls");
-    logo(1);
-    gotoRowCol(9,50);
-    cout<<"1)      FOR MAIN MENU  PRESS 1 ";
-    gotoRowCol(11,50);
-    cout<<"2)        PRESS ANY KEY FOR PLAY NEXT LEVEL ";
-    int choice;
-    gotoRowCol(18,25);
-    cout<<"Enter your Choice ::" ;
-    cin>>choice;
-    if(choice!=1)
-    {
-      level_10();
-    }
-}
-
-void level_8() {
-    ex=0;
-    win1=0;
-    L=8;
-    health=5;
-    lev="HARD";
-    moves=200;
-    int x=30;
-    Node* nodes[30][60];
-
-    char maze[30][60] = {
-    {'P', '.', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.','\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X'},
-    {'X', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1'},
-    {'.', '.', '.', '\xB1', '.', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','$', '\xB1', '.', '$', '$', '.', '.', '.', '.', '.', '\xB1', '.', '\xB0', '.', '\xB0', '.', '.', '\xB1', '\xB1', '.','\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1','\xB1', '\xB1', '\xB1', '$','$', '.', '$', '\xB1', '\xB1', '\xB1'},
-    {'.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1' },
-    {'.', '.', '\xB1', '.', '\xB1', '.','.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1'},
-    {'.', '.', '.', '.', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1','\xB1', '.', '\xB1', '.'},
-    {'.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1'},
-    {'X', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1'},
-    {'.', '.', '.', '\xB1', '.', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.'},
-    {'.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.',},
-    {'.', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','$', '\xB1', '.', '$', '$', '.', '.', '.', '.', '.', '\xB1', '.', '\xB0', '.', '\xB1', '.', '.', '\xB1', '\xB1', '.','\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1','\xB1', '\xB1', '\xB1', '$','$', '.', '$', '\xB1', '\xB1', '\xB1'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', 'X', '.', '$', '\xB1', '.', '\xB1', '.', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.','\xB1', '\xB1', '\xB1', '$','.', '$', '$', '\xB1', '\xB1', '\xB1'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.','\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1','\xB1', '\xB1', '\xB1', '$','$', '$', '$', '\xB1', '\xB1', '\xB1'},
-    {'.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', 'X', '.', '.', '$', '.', '.', '$', '$','.', '\xB1', '$', '\xB1', '$', '\xB1', '\xB1', '.', 'X', '.',},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1',  'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X','\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', 'X', 'X', 'X', 'X', 'X', 'X', 'X'},
-    {'.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.','\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.','.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.','X', '.', '.', '\xB1', '.', '\xB1', '.', '.', '$', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', 'X', '.','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '.', '$', '.', '.', '$', '$'},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.'},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.'},
-    {'.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1','\xB1', '\xB1', '\xB1','.', '.', 'X', '.', '.', '$', '.', '.', '$', '$'},
-    {'.', '\xB1','.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1','.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1','\xB1','\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.'},
-    {'.', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.'},
-    {'.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1','\xB1', '.', '\xB0', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.','X', '.', '.', '\xB1', '.', '\xB1', '.', '.', '$', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', 'X', '.','\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '.', '$', '.', '.', '$', '$'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', 'X', '.', '$', '\xB1', '.', '\xB1', '.', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.','\xB1', '\xB1', '\xB1', '$','.', '$', '$', '\xB0', '\xB1', '\xB1'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.','\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1','\xB1', '\xB1', '\xB1', '$','$', '$', '$', '\xB0', 'E', '\xB1'}
-
-    };
-
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < 2*x; j++) {
-            nodes[i][j] = new Node(maze[i][j]);
-        }
-    }
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < 2*x; j++) {
-            if (i > 0) nodes[i][j]->up = nodes[i - 1][j];
-            if (i < x-1) nodes[i][j]->down = nodes[i + 1][j];
-            if (j > 0) nodes[i][j]->left = nodes[i][j - 1];
-            if (j < (2*x)-1) nodes[i][j]->right = nodes[i][j + 1];
-        }
-    }
-
-    Node* player = nodes[0][0];
-    cout << "Navigate the maze to find the exit (E).\n";
-
-    char MOV;
-    bool gameWon = false;
-
-    while (!gameWon) {
-        system("cls");
-        displayMaze(nodes[0][0], x);
-        score();
-
-        cout << "MOV (W/A/S/D/E): ";
-        cin >> MOV;
-        if (!MOVPlayer(player, MOV)) {
-            cout << "Invalid MOV!\n";
-            continue;
-        }
-        moves--;
-
-       if (moves == 0||health==0||ex==1) {
-            game_over();
-            return;
-        }
-
-        system("cls");
-        displayMaze(nodes[0][0], 30);
-        if (win1) {
-            coins += 200;
-            win();
-            gameWon = true;
-        }
-    }
-
-    // Freeing memory
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < 2*x; j++) {
-            delete nodes[i][j];
-        }
-    }
-    system("cls");
-    logo(1);
-    gotoRowCol(9,50);
-    cout<<"1)      FOR MAIN MENU  PRESS 1 ";
-    gotoRowCol(11,50);
-    cout<<"2)        PRESS ANY KEY FOR PLAY NEXT LEVEL ";
-    int choice;
-    gotoRowCol(18,25);
-    cout<<"Enter your Choice ::" ;
-    cin>>choice;
-    if(choice!=1)
-    {
-      level_9();
-    }
-}
-
-void level_7() {
-    L=7;
-    win1=0;
-    health=5;
-    ex=0;
-    lev="MEDIUM";
-    moves=110;
-    int x=20;
-    Node* nodes[20][40];
-
-    char maze[20][40] = {
-    {'P', '.', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', '$', '$', '.', '.', '.', '.', '$', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.'},
-    {'\xB1', '\xB1', '\xB1', '\xB1', '\xB1', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.'},
-    {'.', '.', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', '.', '$', '$', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.'},
-    {'.', '.', '.', '.', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.'},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.'},
-    {'X', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '\xB0', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1'},
-    {'.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.'},
-    {'X', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '$', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.'},
-    {'.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '$', '$', '\xB1', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '.', 'E', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', '\xB0', '.', '.', '$', '.', '.', '$', '$'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', '\xB0', '\xB0', '$', '.', '.', '.', '\xB1', '.','.', '.', '.'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '$', '$', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.'},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.'},
-    {'.', 'X', '.', '.', '\xB1', '.', '\xB1', '.', '.', '$', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', 'X', '.', '.', '$', '.', '.', '$', '$'},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.'},
-    {'.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '$', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','$', '\xB1', '.', '$', '$', '.', '.', '.', '.', '.', '\xB1', '.', '\xB0', '.', '\xB1', '.', '.', '\xB1', '\xB1', 'X'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', 'X', '.', '$', '\xB1', '.', '\xB1', '.', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.'},
-    {'.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '.', '$', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', 'X', '.', '.', '$', '.', '.', '$', '$'}
-
-    };
-
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < 2*x; j++) {
-            nodes[i][j] = new Node(maze[i][j]);
-        }
-    }
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < 2*x; j++) {
-            if (i > 0) nodes[i][j]->up = nodes[i - 1][j];
-            if (i < x-1) nodes[i][j]->down = nodes[i + 1][j];
-            if (j > 0) nodes[i][j]->left = nodes[i][j - 1];
-            if (j < (x*2)-1) nodes[i][j]->right = nodes[i][j + 1];
-        }
-    }
-
-    Node* player = nodes[0][0];
-    cout << "Navigate the maze to find the exit (E).\n";
-
-    char MOV;
-    bool gameWon = false;
-
-    while (!gameWon) {
-        system("cls");
-        displayMaze(nodes[0][0], x);
-        score();
-
-        cout << "MOV (W/A/S/D/E): ";
-        cin >> MOV;
-        if (!MOVPlayer(player, MOV)) {
-            cout << "Invalid MOV!\n";
-            continue;
-        }
-        moves--;
-
-        if (moves == 0||health==0||ex==1) {
-            game_over();
-            return;
-        }
-
-        system("cls");
-        displayMaze(nodes[0][0], x);
-        if (win1) {
-            coins += 200;
-            win();
-            gameWon = true;
-        }
-    }
-
-    // Freeing memory
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < 2*x; j++) {
-            delete nodes[i][j];
-        }
-    }
-    system("cls");
-    logo(1);
-    gotoRowCol(9,50);
-    cout<<"1)      FOR MAIN MENU  PRESS 1 ";
-    gotoRowCol(11,50);
-    cout<<"2)  PRESS ANY KEY FOR PLAY NEXT LEVEL ";
-    int choice;
-    gotoRowCol(18,25);
-    cout<<"Enter your Choice ::" ;
-    cin>>choice;
-    if(choice!=1)
-    {
-        level_8();
-    }
-}
-
-void level_6() {
-    L=6;
-    win1=0;
-    health=5;
-    ex=0;
-    lev="MEDIUM";
-    moves=110;
-    int x=20;
-    Node* nodes[20][40];
-    char maze[20][40] = {
-    {'P', '.', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', '$', '$', '.', '.', '.', '.', '$', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.'},
-    {'\xB1', '\xB1', '\xB1', '\xB1', '\xB1', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.'},
-    {'E', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '$', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.'},
-    {'.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '$', '$', '\xB1', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', '\xB0', '.', '.', '$', '.', '.', '$', '$'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', '\xB0', '\xB0', '$', '.', '.', '.', '\xB1', '.','.', '.', '.'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '$', '$', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.'},
-    {'.', 'X', '.', '.', '\xB1', '.', '\xB1', '.', '.', '$', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', 'X', '.', '.', '$', '.', '.', '$', '$'},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.'},
-    {'.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '$', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1'},
-    {'.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '$', '$', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.'},
-    {'.', '.', '.', '.', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.'},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.'},
-    {'X', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '\xB0', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1'},
-    {'.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','$', '\xB1', '.', '$', '$', '.', '.', '.', '.', '.', '\xB1', '.', '\xB0', '.', '\xB1', '.', '.', '\xB1', '\xB1', 'X'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', 'X', '.', '$', '\xB1', '.', '\xB1', '.', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.'},
-    {'.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', 'X', '.', '.', '$', '.', '.', '$', '$'},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.'},
-
-    };
-
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < 2*x; j++) {
-            nodes[i][j] = new Node(maze[i][j]);
-        }
-    }
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < 2*x; j++) {
-            if (i > 0) nodes[i][j]->up = nodes[i - 1][j];
-            if (i < x-1) nodes[i][j]->down = nodes[i + 1][j];
-            if (j > 0) nodes[i][j]->left = nodes[i][j - 1];
-            if (j < (x*2)-1) nodes[i][j]->right = nodes[i][j + 1];
-        }
-    }
-
-    Node* player = nodes[0][0];
-    cout << "Navigate the maze to find the exit (E).\n";
-
-    char MOV;
-    bool gameWon = false;
-
-    while (!gameWon) {
-        system("cls");
-        displayMaze(nodes[0][0], x);
-        score();
-
-        cout << "MOV (W/A/S/D/E): ";
-        cin >> MOV;
-        if (!MOVPlayer(player, MOV)) {
-            cout << "Invalid MOV!\n";
-            continue;
-        }
-        moves--;
-
-        if (moves == 0||health==0||ex==1) {
-            game_over();
-            return;
-        }
-
-        system("cls");
-        displayMaze(nodes[0][0], x);
-        if (win1) {
-            coins += 200;
-            win();
-            gameWon = true;
-        }
-    }
-
-    // Freeing memory
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < 2*x; j++) {
-            delete nodes[i][j];
-        }
-    }
-    system("cls");
-    logo(1);
-    gotoRowCol(9,50);
-    cout<<"1)      FOR MAIN MENU  PRESS 1 ";
-    gotoRowCol(11,50);
-    cout<<"2)  PRESS ANY KEY FOR PLAY NEXT LEVEL ";
-    int choice;
-    gotoRowCol(18,25);
-    cout<<"Enter your Choice ::" ;
-    cin>>choice;
-    if(choice!=1)
-    {
-        level_7();
-    }
-}
-
-void level_5() {
-    L=5;
-    win1=0;
-    health=5;
-    ex=0;
-    lev="MEDIUM";
-    moves=80;
-    int x=20;
-    Node* nodes[20][40];
-
-    char maze[20][40] = {
-    {'P', '.', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', 'E'},
-    {'.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.'},
-    {'.', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.'},
-    {'.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.'},
-    {'.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', '\xB0', '.', '.', '$', '.', '.', '$', '$'},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.'},
-    {'.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1'},
-    {'.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.'},
-    {'.', '.', '.', '.', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', '\xB0', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.'},
-    {'.', 'X', '.', '.', '\xB1', '.', '\xB1', '.', '.', '$', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', 'X', '.', '.', '$', '.', '.', '$', '$'},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.'},
-    {'X', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1'},
-    {'.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','$', '\xB1', '.', '$', '$', '.', '.', '.', '.', '.', '\xB1', '.', '\xB0', '.', '\xB1', '.', '.', '\xB1', '\xB1', 'X'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', 'X', '.', '$', '\xB1', '.', '\xB1', '.', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.'},
-    {'.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', 'X', '.', '.', '$', '.', '.', '$', '$'},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.'},
-
-    };
-
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < 2*x; j++) {
-            nodes[i][j] = new Node(maze[i][j]);
-        }
-    }
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < 2*x; j++) {
-            if (i > 0) nodes[i][j]->up = nodes[i - 1][j];
-            if (i < x-1) nodes[i][j]->down = nodes[i + 1][j];
-            if (j > 0) nodes[i][j]->left = nodes[i][j - 1];
-            if (j < (x*2)-1) nodes[i][j]->right = nodes[i][j + 1];
-        }
-    }
-
-    Node* player = nodes[0][0];
-    cout << "Navigate the maze to find the exit (E).\n";
-
-    char MOV;
-    bool gameWon = false;
-    while (!gameWon) {
-        system("cls");
-        displayMaze(nodes[0][0], x);
-        score();
-        cout << "MOV (W/A/S/D/E): ";
-        cin >> MOV;
-        if (!MOVPlayer(player, MOV)) {
-            cout << "Invalid MOV!\n";
-            continue;
-        }
-
-        moves--;
-
-        if (moves == 0||health==0||ex==1) {
-            game_over();
-            return;
-        }
-
-        system("cls");
-        displayMaze(nodes[0][0], x);
-        if (win1) {
-            coins += 200;
-            win();
-            gameWon = true;
-        }
-    }
-
-    // Freeing memory
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < 2*x; j++) {
-            delete nodes[i][j];
-        }
-    }
-    system("cls");
-    logo(1);
-    gotoRowCol(9,50);
-    cout<<"1)      FOR MAIN MENU  PRESS 1 ";
-    gotoRowCol(11,50);
-    cout<<"2)  PRESS ANY KEY FOR PLAY NEXT LEVEL ";
-    int choice;
-    gotoRowCol(18,25);
-    cout<<"Enter your Choice ::" ;
-    cin>>choice;
-    if(choice!=1)
-    {
-        level_6();
-    }
-}
-
-void level_4() {
-    L=4;
-    win1=0;
-    health=5;
-    ex=0;
-    lev="MEDIUM";
-    moves=50;
-    int x=20;
-    Node* nodes[20][40];
-
-    char maze[20][40] = {
-    {'P', '.', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.'},
-    {'.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.'},
-    {'.', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.'},
-    {'.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.'},
-    {'.', 'X', '.', '.', '\xB1', '.', '\xB1', '.', '.', '$', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', 'X', '.', '.', '$', '.', '.', '$', '$'},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.'},
-    {'X', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1'},
-    {'.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.','.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.','$', '\xB1', '.', '$', '$', '.', '.', '.', '.', '.', '\xB1', '.', '\xB0', '.', '\xB1', '.', '.', '\xB1', '\xB1', 'E'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', 'X', '.', '$', '\xB1', '.', '\xB1', '.', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.'},
-    {'.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', 'X', '.', '.', '$', '.', '.', '$', '$'},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.'},
-    {'.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1'},
-    {'.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.','.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.'},
-    {'.', '.', '.', '.', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.','.', '.', '.'},
-    {'.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.','.', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', 'X', '.', '.', '$', '.', '.', '$', '$'},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X','.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.'},
-
-    };
-
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < 2*x; j++) {
-            nodes[i][j] = new Node(maze[i][j]);
-        }
-    }
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < 2*x; j++) {
-            if (i > 0) nodes[i][j]->up = nodes[i - 1][j];
-            if (i < x-1) nodes[i][j]->down = nodes[i + 1][j];
-            if (j > 0) nodes[i][j]->left = nodes[i][j - 1];
-            if (j < (x*2)-1) nodes[i][j]->right = nodes[i][j + 1];
-        }
-    }
-
-    Node* player = nodes[0][0];
-    cout << "Navigate the maze to find the exit (E).\n";
-
-    char MOV;
-    bool gameWon = false;
-
-    while (!gameWon) {
-        system("cls");
-        displayMaze(nodes[0][0], x);
-        score();
-
-        cout << "MOV (W/A/S/D/E): ";
-        cin >> MOV;
-        if (!MOVPlayer(player, MOV)) {
-            cout << "Invalid MOV!\n";
-            continue;
-        }
-
-        moves--;
-
-        if (moves == 0||health==0||ex==1) {
-            game_over();
-            return;
-        }
-
-        system("cls");
-        displayMaze(nodes[0][0], x);
-        if (win1) {
-            coins += 200;
-            win();
-            gameWon = true;
-        }
-    }
-
-    // Freeing memory
-    for (int i = 0; i < x; i++) {
-        for (int j = 0; j < 2*x; j++) {
-            delete nodes[i][j];
-        }
-    }
-    system("cls");
-    logo(1);
-    gotoRowCol(9,50);
-    cout<<"1)      FOR MAIN MENU  PRESS 1 ";
-    gotoRowCol(11,50);
-    cout<<"2)  PRESS ANY KEY FOR PLAY NEXT LEVEL ";
-    int choice;
-    gotoRowCol(18,25);
-    cout<<"Enter your Choice ::" ;
-    cin>>choice;
-    if(choice!=1)
-    {
-        level_5();
-    }
-}
-
-void level_3() {
-    win1=0;
-    L=3;
-    ex=0;
-    health=3;
-    lev="EASY";
-    moves=50;
-    int x=10;
-    Node* nodes[10][20];
-
-    char maze[10][20] = {
-    {'P', '.', '.', 'X', '.', '.', '$', '.', '.', '$', '$', '.', 'X', '\xB1', '$', '.', '.', '.', '\xB1', '.'},
-    {'.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.', '.', '\xB1', '.','\xB1','\xB1', '.', '.'},
-    {'.', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.'},
-    {'.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '$', 'X', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.'},
-    {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '.', 'X', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '.'},
-    {'.', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1'},
-    {'.', '\xB1', '.', '\xB1', '.', '.', '$', '.', '\xB1', '.', 'X', '\xB1', '.', '.', 'X', '\xB1', '.', '\xB1', '.', 'X'},
-    {'.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1', '\xB1', '\xB0', '\xB0', '.', '.', '\xB1', '.'},
-    {'.', '.', '.', '\xB1', '.', '\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '\xB1', '$', 'X', '\xB1', '.', '.', '\xB1', '.'},
-    {'$', '\xB1', '.', '$', '$', '.', '.', '.', '.', '.', '\xB1', '.', '\xB0', '.', '\xB1', '.', '.', '\xB1', '\xB1', 'E'}
-};
-    for (int i = 0; i < 10; i++) {
-        for (int j = 0; j < 20; j++) {
-            nodes[i][j] = new Node(maze[i][j]);
-        }
-    }
-    for (int i = 0; i < 10; i++) {
-        for (int j = 0; j < 20; j++) {
-            if (i > 0) nodes[i][j]->up = nodes[i - 1][j];
-            if (i < 9) nodes[i][j]->down = nodes[i + 1][j];
-            if (j > 0) nodes[i][j]->left = nodes[i][j - 1];
-            if (j < 19) nodes[i][j]->right = nodes[i][j + 1];
-        }
-    }
-
-    Node* player = nodes[0][0];
-    cout << "Navigate the maze to find the exit (E).\n";
-
-    char MOV;
-    bool gameWon = false;
-
-    while (!gameWon) {
-        system("cls");
-        displayMaze(nodes[0][0], 10);
-        score();
-
-        cout << "MOV (W/A/S/D/E): ";
-        cin >> MOV;
-        if (!MOVPlayer(player, MOV)) {
-            cout << "Invalid MOV!\n";
-            continue;
-        }
-
-        moves--;
-
-        if (moves == 0||health==0||ex==1) {
-            game_over();
-            return;
-        }
-
-        system("cls");
-        displayMaze(nodes[0][0], 10);
-        if (win1) {
-            coins += 200;
-            win();
-            gameWon = true;
-        }
-    }
-
-    for (int i = 0; i < 10; i++) {
-        for (int j = 0; j < 20; j++) {
-            delete nodes[i][j];
-        }
-    }
-    system("cls");
-    logo(1);
-    gotoRowCol(9,50);
-    cout<<"1)      FOR MAIN MENU  PRESS 1 ";
-    gotoRowCol(11,50);
-    cout<<"2)        PRESS ANY KEY FOR PLAY NEXT LEVEL ";
-    int choice;
-    gotoRowCol(18,25);
-    cout<<"Enter your Choice ::" ;
-    cin>>choice;
-    if(choice!=1)
-    {
-        level_4();
-    }
-}
-
-void level_2() {
-    win1=0;
-    L=2;
-    ex=0;
-    lev="EASY";
-    moves=45;
-    health=3;
-    int x=10;
-    Node* nodes[10][20];
-
-    char maze[10][20] = {
-        {'P', '.', '$', '$', '.', '.', '.', '\xB1', '.', '\xB1', '.', '$', '$', '.', '.', '.', '\xB1', '.', '\xB1','.'},
-        {'\xB1', '\xB1', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '$','.', '\xB1', '\xB1', '.', '.', '$', '.', '.', '.', '.'},
-        {'.', '.', '.', '.', '\xB1', '\xB1', '.', '\xB1', '\xB0', '.','.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.'},
-        {'.', '\xB1', '\xB1', '.', '.', '$', '.', '\xB1', '.', '\xB1','.', '.', '.', '\xB1', '\xB1', '\xB1', '\xB1', '\xB1', '.', '.'},
-        {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1','.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1'},
-        {'.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB0', '.', '\xB1','.', '.', '$', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1'},
-        {'.', '\xB1', '\xB1', '\xB1', '.', '.', '\xB1', '.', '\xB1', '\xB1','.', '.', '\xB1', '.', '\xB1', '.', '.', '.', '.', '.'},
-        {'.', '.', '.', '\xB1', '\xB1', '.', '.', '.', '\xB1', '.','$', '.', '.', '\xB1', '$', '.', '.', '\xB1', '\xB1','\xB1'},
-        {'\xB1', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.', '.', '.', '.', '.'},
-        {'$', '.', '.', '\xB1', '$', '.', '.', '.', '.','.', '&', '.', '.', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', 'E'}
-    };
-
-    for (int i = 0; i < 10; i++) {
-        for (int j = 0; j < 20; j++) {
-            nodes[i][j] = new Node(maze[i][j]);
-        }
-    }
-    for (int i = 0; i < 10; i++) {
-        for (int j = 0; j < 20; j++) {
-            if (i > 0) nodes[i][j]->up = nodes[i - 1][j];
-            if (i < 9) nodes[i][j]->down = nodes[i + 1][j];
-            if (j > 0) nodes[i][j]->left = nodes[i][j - 1];
-            if (j < 19) nodes[i][j]->right = nodes[i][j + 1];
-        }
-    }
-
-    Node* player = nodes[0][0];
-    cout << "Navigate the maze to find the exit (E).\n";
-
-    char MOV;
-    bool gameWon = false;
-
-    while (!gameWon) {
-        system("cls");
-        displayMaze(nodes[0][0], 10);
-        score();
-
-        cout << "MOV (W/A/S/D/E): ";
-        cin >> MOV;
-        if (!MOVPlayer(player, MOV)) {
-            cout << "Invalid MOV!\n";
-            continue;
-        }
-
-        moves--;
-
-    if (moves == 0||health==0||ex==1) {
-            game_over();
-            return;
-        }
-
-        system("cls");
-        displayMaze(nodes[0][0], 10);
-        if (win1) {
-            coins += 200;
-            win();
-            gameWon = true;
-        }
-    }
-
-    // Freeing memory
-    for (int i = 0; i < 10; i++) {
-        for (int j = 0; j < 20; j++) {
-            delete nodes[i][j];
-        }
-    }
-    system("cls");
-    gotoRowCol(9,50);
-    cout<<"1)      FOR MAIN MENU  PRESS 1 ";
-    gotoRowCol(11,50);
-    cout<<"2)        PRESS ANY KEY FOR PLAY NEXT LEVEL ";
-    int choice;
-    gotoRowCol(18,25);
-    cout<<"Enter your Choice ::" ;
-    cin>>choice;
-    if(choice!=1)
-    {
-        level_3();
-    }
-}
-
-  void level_1() {
-    win1=0;
-    L = 1;
-    ex=0;
-    health=3;
-    lev="EASY";
-    int x = 10;
-    moves = 100;
-    coins = 0;
-    Node* nodes[10][20];
-
-    char maze[10][20] = {
-        {'P', 'X', '$', '$', '.', '.', '.', '\xB1', '.', '\xB1', '.', '$', '$', '.', '.', '.', '\xB1', '.', '\xB1','.'},
-        {'.', '\xB1', '\xB1', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '$','.', '\xB1', '\xB1', '.', 'X', '$', '.', '\xB1', '.', '.'},
-        {'.', '.', '.', '.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.','.', '\xB1', '.', '\xB1', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.'},
-        {'.', '\xB1', '\xB1', '.', '\xB1', '$', '.', '\xB1', '.', '\xB1','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1'},
-        {'.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1','.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1'},
-        {'.', '\xB1', '.', '.', '.', '\xB1', '.', '\xB1', '.', '\xB1','.', 'X', '.', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1'},
-        {'.', '\xB1', '\xB1', '\xB1', '.', '.', '\xB1', '.', '.', '.','.', '.', '.', '.', '\xB1', '\xB1', '.', '\xB1', '\xB1', '.'},
-        {'.', '.', '.', '\xB1', '\xB1', '.', '.', '.', '\xB1', '.','$', '.', '.', '\xB1', '$', '.', '.', '.', '\xB1','.'},
-        {'\xB1', '\xB1', '.', '\xB1', '.', '.', '\xB1', '\xB1', '.', '.','\xB1', '\xB1', '.', '\xB1', '.', '.', '\xB1', '.', '.', '.'},
-        {'$', '.', '.', '\xB1', '$', '.', '.', '.', '\xB1','.', '.', '.', '\xB1', '\xB1', '\xB1', '.', '\xB1', '.', '\xB1', 'E'}
-    };
-
-    for (int i = 0; i < 10; i++) {
-        for (int j = 0; j < 20; j++) {
-            nodes[i][j] = new Node(maze[i][j]);
-        }
-    }
-    for (int i = 0; i < 10; i++) {
-        for (int j = 0; j < 20; j++) {
-            if (i > 0) nodes[i][j]->up = nodes[i - 1][j];
-            if (i < 9) nodes[i][j]->down = nodes[i + 1][j];
-            if (j > 0) nodes[i][j]->left = nodes[i][j - 1];
-            if (j < 19) nodes[i][j]->right = nodes[i][j + 1];
-        }
-    }
-
-    Node* player = nodes[0][0];
-    cout << "Navigate the maze to find the exit (E).\n";
-
-    char MOV;
-    bool gameWon = false;
-
-    while (!gameWon) {
-        system("cls");
-        displayMaze(nodes[0][0], 10);
-        score();
-
-        cout << "MOV (W/A/S/D/E): ";
-        cin >> MOV;
-        if (!MOVPlayer(player, MOV)) {
-            cout << "Invalid MOV!\n";
-            continue;
-        }
-
-        moves--;
-
-        if (moves == 0||health==0||ex==1) {
-            game_over();
-            return;
-        }
-
-        system("cls");
-        displayMaze(nodes[0][0], 10);
-        if (win1) {
-            coins += 100;
-            win();
-            gameWon = true;
-        }
-    }
-
-    // Freeing memory
-    for (int i = 0; i < 10; i++) {
-        for (int j = 0; j < 20; j++) {
-            delete nodes[i][j];
-        }
-    }
-
-    system("cls");
-    logo(1);
-    gotoRowCol(9,50);
-    cout<<"1)      FOR MAIN MENU  PRESS 1 ";
-    gotoRowCol(11,50);
-    cout<<"2)        PRESS ANY KEY FOR PLAY NEXT LEVEL ";
-    int choice;
-    gotoRowCol(18,25);
-    cout<<"Enter your Choice ::" ;
-    cin>>choice;
-    if(choice!=1)
-    {
-        level_2();
-    }
-}
-
-void start()
-{
-    intro();
-    logo(1);
-    gotoRowCol(9,50);
-    cout<<"LOADING ...";
-    gotoRowCol(10,50);
-    char ch=220;
-    for(int i=0;i<20;i++)
-    {
-        sleep(5000);
-        cout<<ch;
-    }
-    menu:
-    lev=" ";
-    system("cls");
-    logo(1);
-
-    gotoRowCol(9,50);
-    cout<<"1)        PLAY";
-    gotoRowCol(11,50);
-    cout<<"2)      DIFFCULTY";
-    gotoRowCol(13,50);
-    cout<<"3)       LEVELS";
-    gotoRowCol(15,50);
-    cout<<"4)     LEADERBOARD";
-    gotoRowCol(17,50);
-    cout<<"5)     INSTRUCTIONS";
-    gotoRowCol(19,50);
-    cout<<"6)        EXIT";
-    int choice;
-    gotoRowCol(20,20);
-    cout<<"Enter your Choice ::" ;
-    cin>>choice;
-    if(choice==1)
-    {
-        level_1();
-        goto menu;
-    }
-    else if (choice==2)
-    {
-        menu2:
-        system("cls");
-        logo(1);
-        gotoRowCol(9,50);
-        cout<<"1)        Easy";
-        gotoRowCol(11,50);
-        cout<<"2)       Medium";
-        gotoRowCol(13,50);
-        cout<<"3)        Hard";
-        gotoRowCol(15,50);
-        cout<<"4)        Back";
-        int choice2;
-        gotoRowCol(16,25);
-        cout<<"Enter your Choice ::" ;
-        cin>>choice2;
-
-
-    if(choice2==1)
-    {
-       lev="EASY";
-       level_1();
-       goto menu;
-    }
-    else if (choice2==2)
-    {
-        lev="Mediun";
-        level_4();
-    }
-    else if (choice2==3)
-    {
-       lev ="Hard";
-        level_10();
-        getch;
-    }
-    else if (choice2==4)
-    {
-       goto menu;
-
-    }
-    else
-    {
-        cout<<"invalid choice ";
-        getch();
-        system("cls");
-        logo(1);
-        goto menu2;
-    }
-}
-    else if (choice==3)
-    {
-        menu3:
-        system("cls");
-        logo(1);
-        gotoRowCol(9,50);
-        cout<<"1)        LEVEL 1";
-        gotoRowCol(11,50);
-        cout<<"2)        LEVEL 2";
-        gotoRowCol(13,50);
-        cout<<"3)        LEVEL 3";
-        gotoRowCol(15,50);
-        cout<<"4)        LEVEL 4";
-        gotoRowCol(17,50);
-        cout<<"5)        LEVEL 5";
-        gotoRowCol(19,50);
-        cout<<"6)         MORE ";
-        gotoRowCol(21,50);
-        cout<<"7)         EXIT ";
-        int choice3;
-        gotoRowCol(20,25);
-        cout<<"Enter your Choice ::" ;
-        cin>>choice3;
-
-    if(choice3==7)
-    {
-        goto menu;
-    }
-    else if(choice3==6)
-    {
-        system("cls");
-        logo(1);
-        gotoRowCol(9,50);
-        cout<<"1)        LEVEL 6";
-        gotoRowCol(11,50);
-        cout<<"2)        LEVEL 7";
-        gotoRowCol(13,50);
-        cout<<"3)        LEVEL 8";
-        gotoRowCol(15,50);
-        cout<<"4)        LEVEL 9";
-        gotoRowCol(17,50);
-        cout<<"5)        LEVEL 10";
-        gotoRowCol(19,50);
-        cout<<"6)         BACK ";
-        gotoRowCol(20,25);
-        cout<<"Enter your Choice ::" ;
-        cin>>choice3;
-
-    if(choice3==6)
-    {
-        goto menu3;
-    }
-    else if(choice3==1){
-       level_6();
-    }
-     else if(choice3==2){
-         level_7();
-    }
-     else if(choice3==3){
-         level_8();
-    }
-     else if(choice3==4){
-         level_9();
-    }
-     else if(choice3==5){
-        level_10();
-    }
-    else {
-        goto menu3;
-    }
-
-    }
-     else if(choice3==1){
-         level_1();
-    }
-     else if(choice3==2){
-         level_2();
-    }
-     else if(choice3==3){
-         level_3();
-    }
-     else if(choice3==4){
-         level_4();
-    }
-     else if(choice3==5){
-        level_5();
-    }
- }
-   else if (choice==4)
-    {
-        displayLeaderboard();
-        getch();
-        goto menu;    }
-   else if (choice==5)
-    {
-        instructions();
-        cout<<"PRESS ANY KEY TO CONTINUE......";
-        getch();
-        goto menu;
-    }
-   else if (choice==6)
-    {
-       cout<<"Exiting ....";
-        getch();
-        return ;
-    }
-    else
-    {
-        cout<<"invalid choice ";
-        getch();
-        system("cls");
-        logo(1);
-        goto menu;
-    }
-    goto menu;
-}
-
-int main() {
-
-    start();
-
-}
-
-
-
-
-
-
