@@ -1,252 +1,539 @@
 #include "framework.h"
-#include <windows.h>
-#include <vector>
 #include <iostream>
+#include <windows.h>
 #include <mmsystem.h>
-#include <sstream> // For stringstream conversion
-#include <thread>
+#include <vector>
 #include <stack>
 #include <queue>
+#include <sstream>
+#include <thread>
+#include <ctime>
+#include <cstdlib>
 #include <string>
 
-#define CELL_SIZE 50 // Size of each cell in the maze
-#define GRID_ROWS 10 // Number of rows in the maze
-#define GRID_COLS 10 // Number of columns in the maze
-#define TIMER_ID 1 // Timer identifier
-#define TIMER_INTERVAL 1000 // Timer interval in milliseconds (1 second)
+// Link with winmm.lib for multimedia functions
+#pragma comment(lib, "winmm.lib")
 
-// Global Variables
-HINSTANCE hInst;
-HWND hWndMain;
-POINT playerPosition = { 0, 0 }; // Player's starting position
-int currentLevel = 0; // The current level the player is on
-int lives = 2; // Player lives
-int timeLeft = 20; // Time remaining to complete the level
-bool timeOutDisplayed = false;  // Flag to track if time's up message was shown
-int score = 0; // Initial score
-bool isPlayingBackgroundMusic = true; // Flag to control background music
+// Constants for maze and window dimensions
+#define CELL_SIZE 50
+#define GRID_ROWS 10
+#define GRID_COLS 10
+#define TIMER_ID 1
+#define TIMER_INTERVAL 1000
 
-// Define a stack to track player moves
-std::stack<POINT> playerMoveHistory;
-// Define a queue to manage game events
-std::queue<std::wstring> eventQueue;
+// Total levels
+#define TOTAL_LEVELS 5
 
-// Define multiple levels (as 2D arrays)
-// Add `-1` for hazardous obstacles (e.g., traps or spikes)
-std::vector<std::vector<std::vector<int>>> levels = {
-    { // Level 1
-        {0, 1, 3, 3, 3, 3, 3, 3, 3, 3},
-        {3, 3, 2, 1, 1, 1, 1, 1, 1, 3},
-        {3, 3, 3, 3, -1, 3, 3, 3, 1, 3}, // Hazard at (2, 4)
-        {3, 1, 3, 1, 3, 1, 1, 3, 1, 3},
-        {3, 1, 3, 1, 3, 1, 3, 3, 1, 3},
-        {3, 1, 3, 1, 3, 1, 3, 1, 1, 3},
-        {3, 1, 3, 3, 3, 1, 3, 3, 3, 3},
-        {3, 1, 1, 1, 1, 1, 3, 1, 1, 3},
-        {3, 3, 3, 3, 3, 3, 3, 1, 3, 3},
-        {3, 3, 3, 3, 3, 3, 1, 1, 3, 0}
-    },
-    { // Level 2
-        {0, 3, 3, 1, 3, 3, 1, 1, 3, 3},
-        {3, 1, 3, 1, 1, 3, 3, 3, 3, 3},
-        {3, 1, 3, 3, 3, 3, 3, 1, -1, 3}, // Hazard at (2, 8)
-        {3, 3, 3, 1, 1, 1, 3, 3, 1, 3},
-        {3, 1, 2, 3, 1, 3, 3, 3, 3, 3},
-        {3, 3, 1, 3, 3, 1, 3, 3, 1, 3},
-        {1, 1, 3, 3, 1, 3, 3, 3, 3, 3},
-        {1, 3, 1, 1, 3, 1, 1, 3, 1, 3},
-        {3, 3, 3, 3, 3, 3, 1, 3, 1, 3},
-        {3, 1, 3, 3, 3, 1, 3, 3, 3, 0}
-    },
-    { // Level 3
-        {0, 3, 3, 3, 3, 3, 1, 3, 1, 3},
-        {1, 3, 1, 2, 1, 3, 1, 1, 3, 1},
-        {1, 1, 1, 3, 3, 3, 3, -1, 1, 3}, // Hazard at (2, 7)
-        {3, 1, 3, 1, 3, 3, 1, 3, 1, 3},
-        {1, 3, 3, 3, 3, 1, 1, 3, 3, 1},
-        {3, 1, 1, 1, 3, 3, 1, 3, 3, 3},
-        {3, 3, 1, 3, 3, 3, 3, 3, 1, 3},
-        {1, 1, 3, 1, 3, 1, 1, 1, 1, 1},
-        {3, 3, 3, 3, 3, 1, 3, 3, 3, 3},
-        {3, 1, 3, 1, 3, 3, 3, 1, 3, 0}
-    },
-    { // Level 4
-    {0, 3, 1, 3, 3, 3, 1, 3, 1, 3},
-    {3, 1, 1, 2, 1, 3, 1, 1, 3, 1},
-    {3, 3, 3, 3, 1, 3, 3, 3, 1, 3},
-    {1, 1, 3, 1, 3, 3, 1, 3, 1, 3},
-    {1, 3, 3, 3, 3, 1, 1, -1, 3, 1}, // Hazard at (4, 8)
-    {3, 1, 1, 1, 3, 3, 1, 3, 3, 3},
-    {3, 3, 1, 3, -1, 3, 3, 3, 1, 3},
-    {1, 1, 3, 1, 3, 1, 3, 1, 3, 3},
-    {1, 3, 1, 3, 3, 3, 1, 1, 3, 1},
-    {3, 1, 3, 3, 3, 3, 3, 3, 3, 0}
-    },
-    { // Level 5
-    {0, 1, 3, 1, 3, 3, 1, 3, 1, 3},
-    {3, 3, 3, 2, 1, 3, 1, 1, 3, 1},
-    {1, 1, 1, 3, 3, 3, 3, -1, 1, 3},
-    {3, 1, 3, 1, 3, 3, 1, 3, 1, 3},
-    {1, 3, 3, 3, 3, 1, 1, 3, 3, 1},
-    {3, 1, 1, 1, 3, -1, 1, 3, 1, 3},
-    {3, 3, 1, 2, 3, 3, 1, 3, 1, 3},
-    {1, 1, 3, 1, 3, 1, 3, 3, 3, 3},
-    {1, 3, 1, 3, 3, 3, 3, 1, -1, 3}, // Hazard at (8,8)
-    {3, 1, 3, 3, 3, 1, 3, 3, 3, 0}
-    }
+// --- Cell values ---
+// For better readability, define symbolic names for cell values.
+enum CellType {
+    PASSAGE = 0,    // empty (used for start/end)
+    WALL = 1,
+    COLLECTIBLE = 2,// collectible: adds one life
+    HAZARD = 3,     // harmful hurdle: subtracts life and time
+    OBSTACLE = 4,   // blocks movement
+    MINIDOT = 5     // safe passage with a mini-dot (score available)
 };
 
-POINT endPosition = { 9, 9 }; // Endpoint of the maze
+// Maze cell structure for generating the maze.
+struct MazeCell {
+    bool visited = false;
+    // Walls: true means wall exists; false means passage.
+    bool top = true, bottom = true, left = true, right = true;
+};
 
-//Forward Declaration
+// Global variables
+HINSTANCE hInst;
+HWND hWndMain;
+
+// Player state: starting at (0,0) and ending at (9,9)
+POINT playerPosition = { 0, 0 };
+POINT endPosition = { GRID_COLS - 1, GRID_ROWS - 1 };
+
+// Game state
+int currentLevel = 0;
+int lives = 2;      // Player starts with 2 lives.
+int timeLeft = 15;  // 15-second timer per level.
+int score = 0;      // Score increases by 1 for every mini-dot collected.
+
+// Global flags for pausing and ensuring one-time messages.
+bool g_paused = false;          // When true, timer events and movement are ignored.
+bool g_timeOverShown = false;   // Set to true when the "Time Over" message has been shown.
+bool g_hazardShown = false;     // Set to true when the hazardous collision message has been shown.
+bool isPlayingBackgroundMusic = true; // Flag to control background music
+
+// Container for maze levels; each level is a 2D vector (grid) of integers.
+std::vector<std::vector<std::vector<int>>> levels;
+
+// For undo functionality (if desired)
+std::stack<POINT> playerMoveHistory;
+
+// Forward declarations for functions defined later.
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
-void DrawMaze(HDC hdc);
-void MovePlayer(int dx, int dy);
-void NextLevel();
-std::wstring ConvertToWString(int number); // Conversion function for integers to wide strings
-void RestartLevel(); // Function to restart the level if time runs out or on hazard hit
-void PlayGameSound(const std::wstring& soundFile);
-void PlayBackgroundMusic(const std::wstring& soundFile);
-void StopBackgroundMusic();
-void UndoMove();
-void ProcessEvents();
+std::wstring ConvertToWString(int number);
+void PlayGameSound(const std::wstring& soundFile);     // Sound function GF1
+void PlayBackgroundMusic(const std::wstring& soundFile); // Sound function GF2
+void StopBackgroundMusic();                              // Sound function GF3
 
-int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance,
-    _In_ LPWSTR lpCmdLine, _In_ int nCmdShow) {
-    UNREFERENCED_PARAMETER(hPrevInstance);
-    UNREFERENCED_PARAMETER(lpCmdLine);
-
-    hInst = hInstance;
-
-    WNDCLASS wc = {};
-    wc.lpfnWndProc = WndProc;
-    wc.hInstance = hInstance;
-    wc.lpszClassName = L"MazeGameClass";
-    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-
-    RegisterClass(&wc);
-
-    hWndMain = CreateWindow(L"MazeGameClass", L"Maze Game", WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, CELL_SIZE * GRID_COLS + 20, CELL_SIZE * GRID_ROWS + 40,
-        nullptr, nullptr, hInstance, nullptr);
-
-    if (!hWndMain) {
-        return FALSE;
-    }
-
-    ShowWindow(hWndMain, nCmdShow);
-    UpdateWindow(hWndMain);
-
-    // Start the timer
-    SetTimer(hWndMain, TIMER_ID, TIMER_INTERVAL, nullptr);
-    //startup sound
-    PlayGameSound(L"thrill01.wav");
-
-    Sleep(2000); //delay of 3 seconds
-    // Play background music in a separate thread
-    std::thread bgMusicThread(PlayBackgroundMusic, L"background 01.mp3");
-    bgMusicThread.detach(); // Detach the thread to run independently
-
-    // Main message loop
-    MSG msg;
-    while (GetMessage(&msg, nullptr, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
-    }
-
-    // Stop background music when the game ends
-    StopBackgroundMusic();
-
-    return (int)msg.wParam;
+// Initialize a 2D vector of MazeCell objects.
+std::vector<std::vector<MazeCell>> InitializeMazeCells(int rows, int cols) {
+    return std::vector<std::vector<MazeCell>>(rows, std::vector<MazeCell>(cols));
 }
 
+// Remove wall between two adjacent cells.
+void RemoveWall(MazeCell& current, MazeCell& next, int dx, int dy) {
+    if (dx == 1) {          // next is to the right
+        current.right = false;
+        next.left = false;
+    }
+    else if (dx == -1) {    // next is to the left
+        current.left = false;
+        next.right = false;
+    }
+    else if (dy == 1) {     // next is below
+        current.bottom = false;
+        next.top = false;
+    }
+    else if (dy == -1) {    // next is above
+        current.top = false;
+        next.bottom = false;
+    }
+}
+
+// Maze generation using DFS (iterative with a stack).
+void GenerateMazeDFS(std::vector<std::vector<MazeCell>>& maze, int startRow, int startCol) {
+    int rows = maze.size();
+    int cols = maze[0].size();
+    std::stack<POINT> cellStack;
+    maze[startRow][startCol].visited = true;
+    cellStack.push({ startCol, startRow });  // POINT.x = col, POINT.y = row
+
+    // Directions: up, right, down, left (dx, dy)
+    std::vector<POINT> directions = { {0, -1}, {1, 0}, {0, 1}, {-1, 0} };
+
+    while (!cellStack.empty()) {
+        POINT current = cellStack.top();
+        int curRow = current.y;
+        int curCol = current.x;
+        std::vector<POINT> neighbors;
+        for (auto dir : directions) {
+            int newRow = curRow + dir.y;
+            int newCol = curCol + dir.x;
+            if (newRow >= 0 && newRow < rows && newCol >= 0 && newCol < cols &&
+                !maze[newRow][newCol].visited) {
+                neighbors.push_back(dir);
+            }
+        }
+        if (!neighbors.empty()) {
+            int index = rand() % neighbors.size();
+            POINT chosen = neighbors[index];
+            int newRow = curRow + chosen.y;
+            int newCol = curCol + chosen.x;
+            RemoveWall(maze[curRow][curCol], maze[newRow][newCol], chosen.x, chosen.y);
+            maze[newRow][newCol].visited = true;
+            cellStack.push({ newCol, newRow });
+        }
+        else {
+            cellStack.pop();
+        }
+    }
+}
+
+// Convert the MazeCell grid to a grid of integers.
+// Initially, we mark passages as 0 (empty). Later, we decorate.
+std::vector<std::vector<int>> ConvertMazeToGrid(const std::vector<std::vector<MazeCell>>& maze) {
+    int rows = maze.size();
+    int cols = maze[0].size();
+    std::vector<std::vector<int>> grid(rows, std::vector<int>(cols, WALL));  // initialize all as walls
+    for (int r = 0; r < rows; r++) {
+        for (int c = 0; c < cols; c++) {
+            // If any wall is missing or the cell was visited, mark as passage.
+            if (!maze[r][c].top || !maze[r][c].bottom || !maze[r][c].left || !maze[r][c].right || maze[r][c].visited)
+                grid[r][c] = PASSAGE;
+        }
+    }
+    // Mark starting and ending positions explicitly.
+    grid[0][0] = PASSAGE;
+    grid[rows - 1][cols - 1] = PASSAGE;
+    return grid;
+}
+
+// Check if there is a valid path from start to end using BFS.
+bool IsPathValid(const std::vector<std::vector<int>>& grid) {
+    int rows = grid.size(), cols = grid[0].size();
+    std::vector<std::vector<bool>> visited(rows, std::vector<bool>(cols, false));
+    std::queue<POINT> q;
+    POINT start = { 0, 0 };
+    POINT end = { cols - 1, rows - 1 };
+    q.push(start);
+    visited[start.y][start.x] = true;
+    std::vector<POINT> directions = { {0, -1}, {1, 0}, {0, 1}, {-1, 0} };
+    while (!q.empty()) {
+        POINT cur = q.front();
+        q.pop();
+        if (cur.x == end.x && cur.y == end.y)
+            return true;
+        for (auto d : directions) {
+            int nx = cur.x + d.x, ny = cur.y + d.y;
+            if (nx >= 0 && nx < cols && ny >= 0 && ny < rows &&
+                !visited[ny][nx] && grid[ny][nx] == PASSAGE) {
+                visited[ny][nx] = true;
+                q.push({ nx, ny });
+            }
+        }
+    }
+    return false;
+}
+
+// Use BFS with predecessor tracking to retrieve one valid path.
+std::vector<POINT> GetValidPath(const std::vector<std::vector<int>>& grid) {
+    int rows = grid.size(), cols = grid[0].size();
+    std::vector<std::vector<bool>> visited(rows, std::vector<bool>(cols, false));
+    std::vector<std::vector<POINT>> parent(rows, std::vector<POINT>(cols, { -1, -1 }));
+    std::queue<POINT> q;
+    POINT start = { 0, 0 };
+    POINT end = { cols - 1, rows - 1 };
+    q.push(start);
+    visited[start.y][start.x] = true;
+    std::vector<POINT> directions = { {0, -1}, {1, 0}, {0, 1}, {-1, 0} };
+    bool found = false;
+    while (!q.empty() && !found) {
+        POINT cur = q.front();
+        q.pop();
+        if (cur.x == end.x && cur.y == end.y) {
+            found = true;
+            break;
+        }
+        for (auto d : directions) {
+            int nx = cur.x + d.x, ny = cur.y + d.y;
+            if (nx >= 0 && nx < cols && ny >= 0 && ny < rows &&
+                !visited[ny][nx] && grid[ny][nx] == PASSAGE) {
+                visited[ny][nx] = true;
+                parent[ny][nx] = cur;
+                q.push({ nx, ny });
+            }
+        }
+    }
+    std::vector<POINT> path;
+    if (found) {
+        POINT cur = end;
+        while (!(cur.x == start.x && cur.y == start.y)) {
+            path.push_back(cur);
+            cur = parent[cur.y][cur.x];
+        }
+        path.push_back(start);
+    }
+    return path;
+}
+
+// Decorate the maze:
+// For every passage cell (value PASSAGE) that is NOT on the valid path,
+// randomly change it to COLLECTIBLE, HAZARD, or OBSTACLE. Then, for all remaining
+// passage cells, set them to MINIDOT (for scoring).
+void DecorateMaze(std::vector<std::vector<int>>& grid) {
+    int rows = grid.size(), cols = grid[0].size();
+    std::vector<POINT> validPath = GetValidPath(grid);
+    std::vector<std::vector<bool>> isValidPath(rows, std::vector<bool>(cols, false));
+    for (auto p : validPath)
+        isValidPath[p.y][p.x] = true;
+
+    for (int r = 0; r < rows; r++) {
+        for (int c = 0; c < cols; c++) {
+            // Only decorate passage cells that are not on the valid path.
+            if (grid[r][c] == PASSAGE && !isValidPath[r][c]) {
+                // Do not change the start and end cells.
+                if ((r == 0 && c == 0) || (r == rows - 1 && c == cols - 1))
+                    continue;
+                int randVal = rand() % 100; // 0 to 99.
+                if (randVal < 5) {             // 5% chance: collectible.
+                    grid[r][c] = COLLECTIBLE;
+                }
+                else if (randVal < 15) {       // Next 10%: harmful hurdle.
+                    grid[r][c] = HAZARD;
+                }
+                else if (randVal < 35) {       // Next 20%: obstacle.
+                    grid[r][c] = OBSTACLE;
+                }
+                // Otherwise, leave as PASSAGE.
+            }
+        }
+    }
+    // Finally, convert all remaining PASSAGE cells to MINIDOT.
+    for (int r = 0; r < rows; r++) {
+        for (int c = 0; c < cols; c++) {
+            if (grid[r][c] == PASSAGE)
+                grid[r][c] = MINIDOT;
+        }
+    }
+}
+
+// Generate one random maze level that is valid, then decorate it.
+std::vector<std::vector<int>> GenerateRandomMazeLevel() {
+    while (true) {
+        auto mazeCells = InitializeMazeCells(GRID_ROWS, GRID_COLS);
+        GenerateMazeDFS(mazeCells, 0, 0);
+        auto grid = ConvertMazeToGrid(mazeCells);
+        if (IsPathValid(grid)) {
+            DecorateMaze(grid);
+            // Guarantee the start and end remain safe (empty).
+            grid[0][0] = PASSAGE;
+            grid[GRID_ROWS - 1][GRID_COLS - 1] = PASSAGE;
+            return grid;
+        }
+        // Otherwise, try again.
+    }
+}
+
+// Generate all levels.
+void GenerateRandomLevels() {
+    levels.clear();
+    for (int i = 0; i < TOTAL_LEVELS; i++) {
+        levels.push_back(GenerateRandomMazeLevel());
+    }
+    currentLevel = 0;
+}
+
+// Utility: Convert an integer to a wstring.
+std::wstring ConvertToWString(int number) {
+    std::wstringstream ss;
+    ss << number;
+    return ss.str();
+}
+
+// Sound Functions
+void PlayGameSound(const std::wstring& soundFile) {
+    PlaySound(soundFile.c_str(), NULL, SND_FILENAME | SND_ASYNC);
+}
+
+void PlayBackgroundMusic(const std::wstring& soundFile) {
+    std::wstring command = L"open \"" + soundFile + L"\" type mpegvideo alias bgm";
+    mciSendString(command.c_str(), nullptr, 0, nullptr);
+    mciSendString(L"play bgm repeat", nullptr, 0, nullptr);
+}
+
+void StopBackgroundMusic() {
+    mciSendString(L"stop bgm", nullptr, 0, nullptr);
+    mciSendString(L"close bgm", nullptr, 0, nullptr);
+}
+
+// Helper: Pause the timer, show a modal message box, then restart the timer.
+void ShowPausedMessage(LPCWSTR message, LPCWSTR title) {
+    KillTimer(hWndMain, TIMER_ID);
+    MessageBox(hWndMain, message, title, MB_OK);
+    SetTimer(hWndMain, TIMER_ID, TIMER_INTERVAL, NULL);
+}
+
+void DrawMaze(HDC hdc) {
+    const std::vector<std::vector<int>>& maze = levels[currentLevel];
+    // Create and select a larger Unicode-capable font.
+    // Here we use a height of 42 so that the symbols fill the 50-pixel cell nicely.
+    HFONT hFont = CreateFont(
+        48,              // Increased height for larger symbols.
+        0, 0, 0, FW_BOLD,
+        FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS,
+        CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY,
+        VARIABLE_PITCH,
+        L"Segoe UI Emoji"  // Use a Unicode-capable font.
+    );
+    HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
+
+    // Iterate through each cell.
+    for (int row = 0; row < GRID_ROWS; ++row) {
+        for (int col = 0; col < GRID_COLS; ++col) {
+            RECT cell = { col * CELL_SIZE, row * CELL_SIZE, (col + 1) * CELL_SIZE, (row + 1) * CELL_SIZE };
+            // For walls, fill with black.
+            if (maze[row][col] == WALL) {
+                HBRUSH wallBrush = CreateSolidBrush(RGB(0, 0, 0));
+                FillRect(hdc, &cell, wallBrush);
+                DeleteObject(wallBrush);
+            }
+            else {
+                // For all non-wall cells, fill with plain white.
+                HBRUSH whiteBrush = CreateSolidBrush(RGB(255, 255, 255));
+                FillRect(hdc, &cell, whiteBrush);
+                DeleteObject(whiteBrush);
+            }
+            // Draw cell border.
+            FrameRect(hdc, &cell, (HBRUSH)GetStockObject(BLACK_BRUSH));
+
+            // Determine if we need to draw a Unicode symbol.
+            std::wstring symbol;
+            COLORREF symbolColor = RGB(0, 0, 0); // default fallback color
+
+            switch (maze[row][col]) {
+            case COLLECTIBLE:
+                symbol = L"💎";
+                // Use a diamond-like blue for collectibles.
+                symbolColor = RGB(0, 191, 255);
+                break;
+            case HAZARD:
+                symbol = L"☠️";
+                // Use red for hazards.
+                symbolColor = RGB(255, 0, 0);
+                break;
+            case OBSTACLE:
+                symbol = L"🚧";
+                // Use purple for obstacles.
+                symbolColor = RGB(128, 0, 128);
+                break;
+            case MINIDOT:
+                symbol = L"•";
+                // Use gold for mini-dots (score items).
+                symbolColor = RGB(255, 215, 0);
+                break;
+            default:
+                // For PASSAGE or any cell without decoration, no symbol is drawn.
+                break;
+            }
+            if (!symbol.empty()) {
+                // Measure text size.
+                SIZE textSize;
+                GetTextExtentPoint32(hdc, symbol.c_str(), symbol.length(), &textSize);
+                int textX = col * CELL_SIZE + (CELL_SIZE - textSize.cx) / 2;
+                int textY = row * CELL_SIZE + (CELL_SIZE - textSize.cy) / 2;
+                SetBkMode(hdc, TRANSPARENT);
+                SetTextColor(hdc, symbolColor);
+                TextOut(hdc, textX, textY, symbol.c_str(), symbol.length());
+            }
+        }
+    }
+    // Do NOT override the starting cell; leave it as a normal passage.
+
+    // For the ending cell, fill with dark orange instead of red.
+    RECT endRect = { (GRID_COLS - 1) * CELL_SIZE, (GRID_ROWS - 1) * CELL_SIZE,
+                     GRID_COLS * CELL_SIZE, GRID_ROWS * CELL_SIZE };
+    HBRUSH endBrush = CreateSolidBrush(RGB(255, 140, 0)); // Dark orange.
+    FillRect(hdc, &endRect, endBrush);
+    DeleteObject(endBrush);
+
+    // Overlay a door Unicode symbol ("⛩️") at the ending cell.
+    std::wstring doorSymbol = L"⛩️";
+    SIZE doorSize;
+    GetTextExtentPoint32(hdc, doorSymbol.c_str(), doorSymbol.length(), &doorSize);
+    int doorX = (GRID_COLS - 1) * CELL_SIZE + (CELL_SIZE - doorSize.cx) / 2;
+    int doorY = (GRID_ROWS - 1) * CELL_SIZE + (CELL_SIZE - doorSize.cy) / 2;
+    SetBkMode(hdc, TRANSPARENT);
+    // Use white for the door symbol.
+    SetTextColor(hdc, RGB(255, 255, 255));
+    TextOut(hdc, doorX, doorY, doorSymbol.c_str(), doorSymbol.length());
+
+    // Draw the player as a Unicode character ("🤺") with blue color.
+    int playerX = playerPosition.x * CELL_SIZE;
+    int playerY = playerPosition.y * CELL_SIZE;
+    std::wstring playerSymbol = L"🤺";
+    SIZE pSize;
+    GetTextExtentPoint32(hdc, playerSymbol.c_str(), playerSymbol.length(), &pSize);
+    int pTextX = playerX + (CELL_SIZE - pSize.cx) / 2;
+    int pTextY = playerY + (CELL_SIZE - pSize.cy) / 2;
+    SetTextColor(hdc, RGB(0, 0, 255));
+    TextOut(hdc, pTextX, pTextY, playerSymbol.c_str(), playerSymbol.length());
+
+    // Draw the HUD (lives, time, score) to the right of the maze.
+    // Increase the width of the HUD rectangle to display larger numbers.
+    std::wstring hud = L"Lives: " + ConvertToWString(lives) +
+        L"\nTime: " + ConvertToWString(timeLeft) +
+        L"\nScore: " + ConvertToWString(score);
+    RECT hudRect = { GRID_COLS * CELL_SIZE + 10, 10, GRID_COLS * CELL_SIZE + 250, 150 };
+    DrawText(hdc, hud.c_str(), -1, &hudRect, DT_LEFT | DT_TOP);
+
+    // Restore the original font.
+    SelectObject(hdc, oldFont);
+    DeleteObject(hFont);
+}
+
+// Update player movement to handle obstacles, collectibles, mini-dots (for score), and hazards.
+void MovePlayer(int dx, int dy) {
+    int newX = playerPosition.x + dx;
+    int newY = playerPosition.y + dy;
+    if (newX >= 0 && newX < GRID_COLS && newY >= 0 && newY < GRID_ROWS) {
+        int cellValue = levels[currentLevel][newY][newX];
+        if (cellValue == WALL || cellValue == OBSTACLE) {
+            // Cannot move into a wall or an obstacle.
+            return;
+        }
+        else if (cellValue == HAZARD) {
+            // Hazard: deduct a life and 5 seconds, then reset player.
+            lives--;
+            //timeLeft = (timeLeft > 10) ? timeLeft - 5 : 0;
+            playerPosition = { 0, 0 };
+            PlayGameSound(L"hazard01.wav"); // Play hazard sound
+            if (lives <= 0) {
+                KillTimer(hWndMain, TIMER_ID);
+                MessageBox(hWndMain, L"You hit a harmful hurdle! No lives remaining. Game Over.", L"Game Over", MB_OK);
+                PostQuitMessage(0);
+                return;
+            }
+            else {
+                ShowPausedMessage(L"You hit a harmful hurdle! Restarting from the beginning.", L"Hazard");
+                InvalidateRect(hWndMain, NULL, TRUE);
+                return;
+            }
+        }
+        else if (cellValue == COLLECTIBLE) {
+            // Collectible: gain one life.
+            lives++;
+            timeLeft = timeLeft + 5;
+            PlayGameSound(L"powerup.wav"); // Play power-up sound
+            levels[currentLevel][newY][newX] = PASSAGE; // Remove collectible.
+        }
+        else if (cellValue == MINIDOT) {
+            // Mini-dot: collect for score.
+            score++;
+            levels[currentLevel][newY][newX] = PASSAGE; // Remove dot.
+        }
+        // For a passage cell (PASSAGE), allow movement.
+        playerMoveHistory.push(playerPosition);
+        playerPosition.x = newX;
+        playerPosition.y = newY;
+    }
+    // Check if the player has reached the end.
+    if (playerPosition.x == endPosition.x && playerPosition.y == endPosition.y) {
+        if (currentLevel < TOTAL_LEVELS - 1) {
+            currentLevel++;
+            PlayGameSound(L"lvl.wav"); // Level transfer sound
+            playerPosition = { 0, 0 };
+            timeLeft = 25;  // Reset timer for next level.
+        }
+        else {
+            KillTimer(hWndMain, TIMER_ID);
+            PlayGameSound(L"win01.wav"); // Winning sound
+            MessageBox(hWndMain, L"Congratulations! You've completed all levels!", L"Victory", MB_OK);
+            PostQuitMessage(0);
+        }
+    }
+    InvalidateRect(hWndMain, NULL, TRUE);
+}
+
+// Window procedure.
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
     case WM_PAINT: {
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hWnd, &ps);
-
-        // Double buffering setup
+        // Double buffering to reduce flicker.
         HDC hdcMem = CreateCompatibleDC(hdc);
-        HBITMAP hbmMem = CreateCompatibleBitmap(hdc, CELL_SIZE * GRID_COLS + CELL_SIZE * 3, CELL_SIZE * GRID_ROWS);
+        RECT clientRect;
+        GetClientRect(hWnd, &clientRect);
+        int width = clientRect.right - clientRect.left;
+        int height = clientRect.bottom - clientRect.top;
+        HBITMAP hbmMem = CreateCompatibleBitmap(hdc, width, height);
         HBITMAP hbmOld = (HBITMAP)SelectObject(hdcMem, hbmMem);
-
-        // Clear the background of the buffer
-        HBRUSH hbrBackground = CreateSolidBrush(RGB(255, 255, 255));
-        RECT bufferRect = { 0, 0, CELL_SIZE * GRID_COLS + CELL_SIZE * 3, CELL_SIZE * GRID_ROWS };
-        FillRect(hdcMem, &bufferRect, hbrBackground);
-        DeleteObject(hbrBackground);
-
-        // Draw the maze onto the buffer
+        HBRUSH hbrBkGnd = CreateSolidBrush(RGB(240, 240, 240));
+        FillRect(hdcMem, &clientRect, hbrBkGnd);
+        DeleteObject(hbrBkGnd);
         DrawMaze(hdcMem);
-
-        // Draw the mini box (2x3)
-        int miniBoxStartX = GRID_COLS * CELL_SIZE + 20; // Padding for mini box
-        int miniBoxStartY = 20; // Padding from top
-        RECT miniBox = {
-            miniBoxStartX,
-            miniBoxStartY,
-            miniBoxStartX + CELL_SIZE * 3, // 3 columns
-            miniBoxStartY + CELL_SIZE * 2  // 2 rows
-        };
-        HBRUSH miniBoxBrush = CreateSolidBrush(RGB(200, 200, 200)); // Gray color for mini box
-        FillRect(hdcMem, &miniBox, miniBoxBrush);
-        DeleteObject(miniBoxBrush);
-
-        // Draw border around the mini box
-        FrameRect(hdcMem, &miniBox, (HBRUSH)GetStockObject(BLACK_BRUSH));
-
-        // Draw the "Lives," "Time," and "Score" text over the mini box
-        HFONT hFont = CreateFont(
-            20,                  // Height of the font
-            0,                   // Width of the font
-            0,                   // Escapement angle
-            0,                   // Orientation angle
-            FW_BOLD,             // Font weight
-            FALSE,               // Italic
-            FALSE,               // Underline
-            FALSE,               // Strikeout
-            DEFAULT_CHARSET,     // Character set
-            OUT_OUTLINE_PRECIS,  // Output precision
-            CLIP_DEFAULT_PRECIS, // Clipping precision
-            CLEARTYPE_QUALITY,   // Output quality
-            VARIABLE_PITCH,      // Pitch and family
-            L"Segoe UI"          // Font name
-        );
-
-        HFONT oldFont = (HFONT)SelectObject(hdcMem, hFont);
-        SetBkMode(hdcMem, TRANSPARENT); // Transparent background for text
-        SetTextColor(hdcMem, RGB(0, 0, 0)); // Black text color
-
-        // Display player lives
-        std::wstring livesText = L"Lives: " + ConvertToWString(lives);
-        TextOut(hdcMem, miniBoxStartX + 10, miniBoxStartY + 10, livesText.c_str(), livesText.length());
-
-        // Display time remaining
-        std::wstring timerText = L"Time: " + ConvertToWString(timeLeft) + L" sec";
-        TextOut(hdcMem, miniBoxStartX + 10, miniBoxStartY + 40, timerText.c_str(), timerText.length());
-
-        // Display the score
-        std::wstring scoreText = L"Score: " + ConvertToWString(score);
-        TextOut(hdcMem, miniBoxStartX + 10, miniBoxStartY + 70, scoreText.c_str(), scoreText.length());
-
-        // Restore font and cleanup
-        SelectObject(hdcMem, oldFont);
-        DeleteObject(hFont);
-
-        // Copy the buffer to the screen
-        BitBlt(hdc, 0, 0, CELL_SIZE * GRID_COLS + CELL_SIZE * 3, CELL_SIZE * GRID_ROWS, hdcMem, 0, 0, SRCCOPY);
-
-        // Cleanup
+        BitBlt(hdc, 0, 0, width, height, hdcMem, 0, 0, SRCCOPY);
         SelectObject(hdcMem, hbmOld);
         DeleteObject(hbmMem);
         DeleteDC(hdcMem);
-
         EndPaint(hWnd, &ps);
-    } break;
+    }
+                 break;
 
-    case WM_KEYDOWN: {
+    case WM_KEYDOWN:
         switch (wParam) {
         case VK_UP:
             MovePlayer(0, -1);
@@ -260,38 +547,35 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         case VK_RIGHT:
             MovePlayer(1, 0);
             break;
-        case 'U':
-            UndoMove();
-            break; // Undo the last move
         }
-        InvalidateRect(hWnd, nullptr, FALSE); // Trigger repaint without erasing background
-    } break;
+        break;
 
-    case WM_TIMER: {
+    case WM_TIMER:
         if (wParam == TIMER_ID) {
             timeLeft--;
-            if (timeLeft <= 0 && !timeOutDisplayed) {
-                lives--;
-                if (lives == 0)
-                {
-                    MessageBox(hWndMain, L"Game Over! Exiting...", L"Maze Game", MB_OK);
-                    Sleep(1000);
-                    PostQuitMessage(0); // End the game
+            if (timeLeft <= 0) {
+                lives--;  // Deduct one life when time runs out.
+                if (lives <= 0) {
+                    KillTimer(hWndMain, TIMER_ID);
+                    MessageBox(hWndMain, L"Time's up and no lives remaining. Game Over.", L"Game Over", MB_OK);
+                    PostQuitMessage(0);
+                    break;
                 }
-                timeOutDisplayed = true; // Set the flag to true to avoid showing again
-                if (lives > 0)
-                {
-                    MessageBox(hWnd, L"Time's up! Restarting level.", L"Timer Alert", MB_OK);
-                    RestartLevel();
-                    timeOutDisplayed = false; // Reset the flag after restarting the level
+                else {
+                    ShowPausedMessage(L"Time's up! Restarting level.", L"Timer");
+                    timeLeft = 25;      // Reset timer.
+                    playerPosition = { 0, 0 };  // Reset player position.
                 }
             }
-            InvalidateRect(hWnd, nullptr, FALSE); // Trigger repaint without erasing background
+            InvalidateRect(hWnd, NULL, TRUE);
         }
-    } break;
+        break;
+
+    case WM_ERASEBKGND:
+        // Prevent background erasing to reduce flicker.
+        return 1;
 
     case WM_DESTROY:
-        KillTimer(hWnd, TIMER_ID); // Stop the timer when the window is destroyed
         PostQuitMessage(0);
         break;
 
@@ -301,379 +585,54 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
     return 0;
 }
 
-// Function to play sound
-void PlayGameSound(const std::wstring& soundFile) {
-    PlaySound(soundFile.c_str(), NULL, SND_FILENAME | SND_ASYNC);
-}
+int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
+    _In_opt_ HINSTANCE hPrevInstance,
+    _In_ LPWSTR    lpCmdLine,
+    _In_ int       nCmdShow)
+{
+    UNREFERENCED_PARAMETER(hPrevInstance);
+    UNREFERENCED_PARAMETER(lpCmdLine);
+    srand((unsigned int)time(NULL));  // Seed the random number generator.
+    hInst = hInstance;
 
-void PlayBackgroundMusic(const std::wstring& soundFile) {
-    // Open the music file
-    std::wstring command = L"open \"" + soundFile + L"\" type mpegvideo alias bgm";
-    mciSendString(command.c_str(), nullptr, 0, nullptr);
+    // Register the window class.
+    WNDCLASS wc = {};
+    wc.lpfnWndProc = WndProc;
+    wc.hInstance = hInstance;
+    wc.lpszClassName = L"MazeGameClass";
+    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    RegisterClass(&wc);
 
-    // Loop the music
-    mciSendString(L"play bgm repeat", nullptr, 0, nullptr);
-}
+    // Create the main window.
+    hWndMain = CreateWindow(L"MazeGameClass", L"Maze Game",
+        WS_OVERLAPPEDWINDOW,
+        CW_USEDEFAULT, CW_USEDEFAULT,
+        CELL_SIZE * GRID_COLS + 150, CELL_SIZE * GRID_ROWS + 40,
+        nullptr, nullptr, hInstance, nullptr);
+    if (!hWndMain)
+        return FALSE;
+    ShowWindow(hWndMain, nCmdShow);
 
-void StopBackgroundMusic() {
-    mciSendString(L"stop bgm", nullptr, 0, nullptr);
-    mciSendString(L"close bgm", nullptr, 0, nullptr);
-}
+    // Generate the decorated maze levels.
+    GenerateRandomLevels();
 
-void UndoMove() {
-    if (!playerMoveHistory.empty()) {
-        // Revert to the previous position
-        playerPosition = playerMoveHistory.top();
-        playerMoveHistory.pop();
+    // Set a timer (1000 ms interval).
+    SetTimer(hWndMain, TIMER_ID, TIMER_INTERVAL, NULL);
 
-        // Redraw the maze
-        InvalidateRect(hWndMain, nullptr, TRUE);
-    }
-    else {
-        eventQueue.push(L"No moves to undo!"); // Add event to queue
-        ProcessEvents();
-    }
-}
+    // Play background music in a separate thread.
+    std::thread bgMusicThread(PlayBackgroundMusic, L"background 01.mp3");
+    bgMusicThread.detach();
 
-void ProcessEvents() {
-    while (!eventQueue.empty()) {
-        std::wstring event = eventQueue.front();
-        eventQueue.pop();
-
-        // Display the event to the player
-        MessageBox(hWndMain, event.c_str(), L"Game Event", MB_OK);
-    }
-}
-
-void DrawMaze(HDC hdc) {
-    std::vector<std::vector<int>> currentMaze = levels[currentLevel];
-
-    for (int row = 0; row < GRID_ROWS; ++row) {
-        for (int col = 0; col < GRID_COLS; ++col) {
-            RECT cell = { col * CELL_SIZE, row * CELL_SIZE, (col + 1) * CELL_SIZE, (row + 1) * CELL_SIZE };
-            HBRUSH brush;
-
-            // Determine the cell color based on its type
-            if (currentMaze[row][col] == 1) {
-                brush = CreateSolidBrush(RGB(0, 0, 0)); // Wall color
-            }
-            else if (currentMaze[row][col] == 3) {
-                brush = CreateSolidBrush(RGB(255, 255, 255)); // Path color
-            }
-            else if (currentMaze[row][col] == -1) {
-                brush = CreateSolidBrush(RGB(255, 255, 255)); // White background for hazard
-            }
-            else if (currentMaze[row][col] == 2) {
-                brush = CreateSolidBrush(RGB(255, 255, 255)); // Power-up color (cyan)
-            }
-            else if (endPosition.x == col && endPosition.y == row) {
-                brush = CreateSolidBrush(RGB(255, 0, 0)); // Red background for the door (end point)
-            }
-            else {
-                brush = CreateSolidBrush(RGB(255, 255, 255)); // Boundary color
-            }
-
-            // Fill the cell and draw grid lines
-            FillRect(hdc, &cell, brush);
-            DeleteObject(brush);
-            FrameRect(hdc, &cell, (HBRUSH)GetStockObject(BLACK_BRUSH));
-
-            // Draw hazard character in the cell
-            if (currentMaze[row][col] == -1) {
-                HFONT hFont = CreateFont(
-                    40,                  // Height of the font (adjust as needed to fit within the grid)
-                    0,                   // Width of the font (0 for default aspect ratio)
-                    0,                   // Escapement angle
-                    0,                   // Orientation angle
-                    FW_BOLD,             // Font weight (FW_NORMAL or FW_BOLD)
-                    FALSE,               // Italic
-                    FALSE,               // Underline
-                    FALSE,               // Strikeout
-                    DEFAULT_CHARSET,     // Character set
-                    OUT_OUTLINE_PRECIS,  // Output precision
-                    CLIP_DEFAULT_PRECIS, // Clipping precision
-                    CLEARTYPE_QUALITY,   // Output quality
-                    VARIABLE_PITCH,      // Pitch and family
-                    L"Segoe UI Emoji"    // Font name (supports emoji)
-                );
-
-                HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
-
-                // Hazard symbol (☠️)
-                std::wstring hazardChar = L"☠️";
-
-                // Calculate the position of the emoji within the grid cell
-                SIZE textSize;
-                GetTextExtentPoint32(hdc, hazardChar.c_str(), hazardChar.length(), &textSize);
-
-                int textX = col * CELL_SIZE + (CELL_SIZE - textSize.cx) / 2; // Center horizontally
-                int textY = row * CELL_SIZE + (CELL_SIZE - textSize.cy) / 2; // Center vertically
-
-                // Set text properties
-                SetBkMode(hdc, TRANSPARENT);          // Transparent background for text
-                SetTextColor(hdc, RGB(0, 0, 0));    // Text color (Red for hazard)
-
-                // Draw the hazard emoji
-                TextOut(hdc, textX, textY, hazardChar.c_str(), hazardChar.length());
-
-                // Restore the previous font and clean up
-                SelectObject(hdc, oldFont);
-                DeleteObject(hFont);
-            }
-
-            if (currentMaze[row][col] == 2) { // Power-up (collectible)
-                brush = CreateSolidBrush(RGB(0, 255, 255)); // Power-up color (cyan)
-
-                // Define the diamond symbol (🍒)
-                HFONT hFont = CreateFont(
-                    40,                  // Height of the font (adjust as needed to fit within the grid)
-                    0,                   // Width of the font (0 for default aspect ratio)
-                    0,                   // Escapement angle
-                    0,                   // Orientation angle
-                    FW_BOLD,             // Font weight (FW_NORMAL or FW_BOLD)
-                    FALSE,               // Italic
-                    FALSE,               // Underline
-                    FALSE,               // Strikeout
-                    DEFAULT_CHARSET,     // Character set
-                    OUT_OUTLINE_PRECIS,  // Output precision
-                    CLIP_DEFAULT_PRECIS, // Clipping precision
-                    CLEARTYPE_QUALITY,   // Output quality
-                    VARIABLE_PITCH,      // Pitch and family
-                    L"Segoe UI Emoji"    // Font name (supports emoji)
-                );
-
-                HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
-
-                // Diamond symbol (💎)
-                std::wstring diamondChar = L"💎";
-
-                // Calculate the position of the emoji within the grid cell
-                SIZE textSize;
-                GetTextExtentPoint32(hdc, diamondChar.c_str(), diamondChar.length(), &textSize);
-
-                int textX = col * CELL_SIZE + (CELL_SIZE - textSize.cx) / 2; // Center horizontally
-                int textY = row * CELL_SIZE + (CELL_SIZE - textSize.cy) / 2; // Center vertically
-
-                // Set text properties
-                SetBkMode(hdc, TRANSPARENT);          // Transparent background for text
-                SetTextColor(hdc, RGB(35, 178, 255));  // Text color (Cyan for the diamond)
-
-                // Draw the diamond emoji
-                TextOut(hdc, textX, textY, diamondChar.c_str(), diamondChar.length());
-
-                // Restore the previous font and clean up
-                SelectObject(hdc, oldFont);
-                DeleteObject(hFont);
-            }
-
-            if (currentMaze[row][col] == 3) { // Mini-dot
-                HFONT hFont = CreateFont(
-                    30,                  // Smaller font size for mini-dots
-                    0,                   // Width of the font (0 for default aspect ratio)
-                    0,                   // Escapement angle
-                    0,                   // Orientation angle
-                    FW_BOLD,             // Font weight
-                    FALSE,               // Italic
-                    FALSE,               // Underline
-                    FALSE,               // Strikeout
-                    DEFAULT_CHARSET,     // Character set
-                    OUT_OUTLINE_PRECIS,  // Output precision
-                    CLIP_DEFAULT_PRECIS, // Clipping precision
-                    CLEARTYPE_QUALITY,   // Output quality
-                    VARIABLE_PITCH,      // Pitch and family
-                    L"Segoe UI Emoji"    // Font name
-                );
-
-                HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
-
-                // Mini-dot symbol (•)
-                std::wstring miniDotChar = L"•";
-
-                // Calculate position within the cell
-                SIZE textSize;
-                GetTextExtentPoint32(hdc, miniDotChar.c_str(), miniDotChar.length(), &textSize);
-
-                int textX = col * CELL_SIZE + (CELL_SIZE - textSize.cx) / 2; // Center horizontally
-                int textY = row * CELL_SIZE + (CELL_SIZE - textSize.cy) / 2; // Center vertically
-
-                // Set text properties
-                SetBkMode(hdc, TRANSPARENT);          // Transparent background for text
-                SetTextColor(hdc, RGB(255, 215, 0));  // Gold color for mini-dots
-
-                // Draw the mini-dot
-                TextOut(hdc, textX, textY, miniDotChar.c_str(), miniDotChar.length());
-
-                // Restore font and clean up
-                SelectObject(hdc, oldFont);
-                DeleteObject(hFont);
-            }
-
-            // Draw the door character at the end position
-            if (endPosition.x == col && endPosition.y == row) {
-                HFONT hFont = CreateFont(
-                    40,                  // Height of the font (adjust as needed to fit within the grid)
-                    0,                   // Width of the font (0 for default aspect ratio)
-                    0,                   // Escapement angle
-                    0,                   // Orientation angle
-                    FW_BOLD,             // Font weight (FW_NORMAL or FW_BOLD)
-                    FALSE,               // Italic
-                    FALSE,               // Underline
-                    FALSE,               // Strikeout
-                    DEFAULT_CHARSET,     // Character set
-                    OUT_OUTLINE_PRECIS,  // Output precision
-                    CLIP_DEFAULT_PRECIS, // Clipping precision
-                    CLEARTYPE_QUALITY,   // Output quality
-                    VARIABLE_PITCH,      // Pitch and family
-                    L"Segoe UI Emoji"    // Font name (supports emoji)
-                );
-
-                HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
-
-                // Door symbol (🚪)
-                std::wstring doorChar = L"🚪";
-
-                // Calculate the position of the emoji within the grid cell
-                SIZE textSize;
-                GetTextExtentPoint32(hdc, doorChar.c_str(), doorChar.length(), &textSize);
-
-                int textX = col * CELL_SIZE + (CELL_SIZE - textSize.cx) / 2; // Center horizontally
-                int textY = row * CELL_SIZE + (CELL_SIZE - textSize.cy) / 2; // Center vertically
-
-                // Set text properties
-                SetBkMode(hdc, TRANSPARENT);          // Transparent background for text
-                SetTextColor(hdc, RGB(255, 255, 255)); // Text color (White for door)
-
-                // Draw the door emoji
-                TextOut(hdc, textX, textY, doorChar.c_str(), doorChar.length());
-
-                // Restore the previous font and clean up
-                SelectObject(hdc, oldFont);
-                DeleteObject(hFont);
-            }
-        }
+    // Main message loop.
+    MSG msg;
+    while (GetMessage(&msg, nullptr, 0, 0)) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
     }
 
-    // Draw the player character using a custom font
-    HFONT hFont = CreateFont(
-        50,                  // Height of the font (increase for larger size)
-        0,                   // Width of the font (0 for default aspect ratio)
-        0,                   // Escapement angle
-        0,                   // Orientation angle
-        FW_BOLD,             // Font weight (FW_NORMAL or FW_BOLD)
-        FALSE,               // Italic
-        FALSE,               // Underline
-        FALSE,               // Strikeout
-        DEFAULT_CHARSET,     // Character set
-        OUT_OUTLINE_PRECIS,  // Output precision
-        CLIP_DEFAULT_PRECIS, // Clipping precision
-        CLEARTYPE_QUALITY,   // Output quality
-        VARIABLE_PITCH,      // Pitch and family
-        L"Segoe UI Emoji"    // Font name (supports emoji)
-    );
+    // Stop background music when the game ends.
+    StopBackgroundMusic();
 
-    HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
-
-    // Define the player emoji
-    std::wstring playerChar = L"🤺";
-
-    // Calculate the position of the emoji within the grid cell
-    SIZE textSize;
-    GetTextExtentPoint32(hdc, playerChar.c_str(), playerChar.length(), &textSize);
-
-    int textX = playerPosition.x * CELL_SIZE + (CELL_SIZE - textSize.cx) / 2; // Center horizontally
-    int textY = playerPosition.y * CELL_SIZE + (CELL_SIZE - textSize.cy) / 2; // Center vertically
-
-    // Set text properties
-    SetBkMode(hdc, TRANSPARENT);          // Transparent background for text
-    SetTextColor(hdc, RGB(0, 25, 255));    // Text color (Blue for the player)
-
-    // Draw the player emoji
-    TextOut(hdc, textX, textY, playerChar.c_str(), playerChar.length());
-
-    // Restore the previous font and clean up
-    SelectObject(hdc, oldFont);
-    DeleteObject(hFont);
-}
-
-void MovePlayer(int dx, int dy) {
-    int newX = playerPosition.x + dx;
-    int newY = playerPosition.y + dy;
-
-    std::vector<std::vector<int>>& currentMaze = levels[currentLevel];
-
-    if (newX >= 0 && newX < GRID_COLS && newY >= 0 && newY < GRID_ROWS) {
-        if (currentMaze[newY][newX] == 0) { // Starting Point
-            playerMoveHistory.push(playerPosition); // Save current position to the stack
-            playerPosition.x = newX;
-            playerPosition.y = newY;
-        }
-        else if (currentMaze[newY][newX] == -1) { // Hazard
-            lives--; // Decrease a life on hazard hit
-            eventQueue.push(L"You hit a hazard! Restarting level."); // Add event to queue
-            PlayGameSound(L"hazard01.wav"); // Play hazard sound
-            RestartLevel();
-        }
-        else if (currentMaze[newY][newX] == 2) { // Power-up
-            lives++; // Increase lives
-            timeLeft += 5; // Add extra time
-            currentMaze[newY][newX] = 0; // Remove the power-up from the maze
-            playerMoveHistory.push(playerPosition); // Save current position to the stack
-            playerPosition.x = newX;
-            playerPosition.y = newY;
-            PlayGameSound(L"powerup.wav"); // Play power-up sound
-            eventQueue.push(L"You collected a power-up! +1 life, +5 seconds."); // Add event to queue
-        }
-        else if (currentMaze[newY][newX] == 3) { // Mini-dot
-            score += 1; // Increment score
-            currentMaze[newY][newX] = 0; // Remove the mini-dot from the maze
-            playerMoveHistory.push(playerPosition); // Save current position to the stack
-            playerPosition.x = newX;
-            playerPosition.y = newY;
-            PlayGameSound(L"mov.wav"); // Play movement sound
-        }
-    }
-
-    // Check if the player has reached the end position
-    if (playerPosition.x == endPosition.x && playerPosition.y == endPosition.y) {
-        if (currentLevel == levels.size() - 1) { // If last level
-            PlayGameSound(L"win01.wav"); // Play winning sound
-            eventQueue.push(L"You Won!"); // Add win event to queue
-            Sleep(2000);
-            PostQuitMessage(0); // End the game
-        }
-        else {
-            PlayGameSound(L"lvl.wav"); // Play transfer(teleport) sound
-            NextLevel();
-        }
-    }
-
-    // Process queued events
-    ProcessEvents();
-
-    // Redraw the maze to reflect changes
-    InvalidateRect(hWndMain, nullptr, TRUE);
-}
-
-void NextLevel() {
-    currentLevel++;
-    playerPosition = { 0, 0 }; // Reset player position
-    timeLeft = 20; // Reset timer
-}
-
-void RestartLevel() {
-    if (lives == 0)
-    {
-        MessageBox(hWndMain, L"Game Over! Exiting...", L"Maze Game", MB_OK);
-        Sleep(1000);
-        PostQuitMessage(0); // End the game
-    }
-    playerPosition = { 0, 0 }; // Reset player position
-    timeLeft = 20; // Reset timer
-    InvalidateRect(hWndMain, nullptr, TRUE);
-}
-
-std::wstring ConvertToWString(int number) {
-    std::wstringstream ss;
-    ss << number;
-    return ss.str();
+    return (int)msg.wParam;
 }
