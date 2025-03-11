@@ -6,22 +6,20 @@ A **Graphical User Interface (GUI)**-based application developed as part of the 
 
 ## Description
 
-The **Maze Game** is an interactive, graphical C++ application that demonstrates the practical application of various data structures and algorithms. Players navigate through a maze with increasing difficulty, utilizing pathfinding algorithms to find a solution while avoiding obstacles.
+The **Maze Game** is an interactive, graphical C++ application that demonstrates the practical application of various data structures and algorithms. Players navigate through a maze with increasing difficulty, utilizing **pathfinding algorithms** to find a solution while avoiding obstacles.
 
-This project uses a **GUI-based interface** built in C++ using Visual Studio 2022, providing an engaging user experience. 
-
-The game now features **randomly generated mazes** instead of hardcoded ones, DFS and BFS are implemented to generate valid paths from the start to the finish of each level.
+This project features a **GUI-based interface** built in **C++ using Visual Studio 2022**, ensuring an engaging user experience. Instead of predefined mazes, the game now **generates random mazes** dynamically using **Depth-First Search (DFS) and Breadth-First Search (BFS)** to create valid paths from the start to the finish of each level.
 
 ---
 
 ## Features
 
-- **Customizable maze environment** for dynamic gameplay.
-- **Randomly generated mazes** with each game session for varied challenges.
-- **Pathfinding algorithm** DFS and BFS are used in this version to find a valid path from start to end.
-- **Multiple difficulty levels** with increasing maze complexity. Total Levels are set to 5 but can be increased by just changing the value of Total Mazes globally.
-- **Interactive gameplay** using intuitive commands to navigate the maze.
-- **Bonus points** for completing levels efficiently.
+- **Dynamic maze generation** using DFS and BFS for unique challenges in every session.
+- **Customizable maze environment** with varied obstacles and difficulty settings.
+- **Pathfinding Algorithms** implemented to ensure solvable mazes.
+- **Multiple difficulty levels** with increasing maze complexity. The default is **5 levels**, but this can be adjusted globally.
+- **Interactive gameplay** with intuitive controls for smooth navigation.
+- **Bonus points system** for faster level completion.
 - **Teleportation functionality** to transition between maze levels.
 - **Smooth GUI** for enhanced visual appeal and user interaction.
 
@@ -31,8 +29,10 @@ The game now features **randomly generated mazes** instead of hardcoded ones, DF
 
 - **Programming Language:** C++
 - **Data Structures:** 3D vectors for maze representation.
-- **Algorithms:** DFS and BFS are used in this version. Future versions will contain Pathfinding (Dijkstra’s Algorithm, etc.), maze generation algorithms.
-- **Platform:** Graphical User Interface (GUI) using Visual Studio 2022.
+- **Algorithms:**  
+  - **Maze Generation:** DFS and BFS (Implemented)  
+  - **Pathfinding (Upcoming):** Dijkstra’s Algorithm, A* Search  
+- **Platform:** GUI-based application built in **Visual Studio 2022**.
 
 ---
 
@@ -63,12 +63,21 @@ The game now features **randomly generated mazes** instead of hardcoded ones, DF
 ## Folder Structure
 
 ```plaintext
-📦DSA-Project-Maze-Game
- ┣ 📂src
- ┃ ┣ 📜main.cpp
- ┃ ┣ 📜game.cpp
- ┃ ┣ 📜game.h
- ┣ 📂assets
- ┃ ┗ 📜map.txt
- ┣ 📜README.md
- ┗ 📜LICENSE
+📦 DSA-Project-Maze-Game
+ ┣ 📂 src
+ ┃ ┣ 📜 main.cpp      # Main entry point
+ ┃ ┣ 📜 game.cpp      # Core game logic
+ ┃ ┣ 📜 game.h        # Header file
+ ┣ 📂 assets
+ ┃ ┗ 📜 map.txt       # Sample map data
+ ┣ 📜 README.md       # Project documentation
+ ┗ 📜 LICENSE         # License file
+```
+---
+
+## Contributions
+
+Feel free to fork the repo, suggest improvements, or report issues! 🚀  
+
+📌 **GitHub Repository:** [DSA-Project-Maze-Game](https://github.com/Code-with-UsmanG/DSA-Project-Maze-Game)
+```
